@@ -1,0 +1,7 @@
+bin/*.exe
+bin/*.pdb
+bin/*.lib
+bin/*.exp
+bin/*.ilk
+bin/*.dll
+obj/

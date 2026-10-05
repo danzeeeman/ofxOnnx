@@ -1,0 +1,162 @@
+{
+  "name": "microduck right_leg",
+  "units": {
+    "length": "m",
+    "angle": "deg"
+  },
+  "upAxis": "Z",
+  "baseLink": "trunk_base",
+  "linkNames": [
+    "trunk_base",
+    "bearing_roll",
+    "hip_l_2",
+    "upper_leg_right",
+    "leg_2",
+    "ankle_right"
+  ],
+  "joints": [
+    {
+      "name": "right_hip_yaw",
+      "link": "bearing_roll",
+      "origin": [
+        0.006,
+        -0.0175,
+        -0.005
+      ],
+      "rot0_wxyz": [
+        -0.5,
+        -0.499999998,
+        -0.500000002,
+        0.5
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -30.0,
+        25.0
+      ]
+    },
+    {
+      "name": "right_hip_roll",
+      "link": "hip_l_2",
+      "origin": [
+        0.0,
+        0.0165,
+        0.0125
+      ],
+      "rot0_wxyz": [
+        -0.5,
+        -0.499999998,
+        -0.500000002,
+        -0.5
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -22.0,
+        22.0
+      ]
+    },
+    {
+      "name": "right_hip_pitch",
+      "link": "upper_leg_right",
+      "origin": [
+        0.025,
+        0.0,
+        -0.0185
+      ],
+      "rot0_wxyz": [
+        0.707106781,
+        -0.707106781,
+        2e-09,
+        0.0
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -90.0,
+        90.0
+      ]
+    },
+    {
+      "name": "right_knee",
+      "link": "leg_2",
+      "origin": [
+        -0.022,
+        0.0357771,
+        -0.004
+      ],
+      "rot0_wxyz": [
+        1e-09,
+        0.707106781,
+        -1e-09,
+        -0.707106781
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -90.0,
+        90.0
+      ]
+    },
+    {
+      "name": "right_ankle",
+      "link": "ankle_right",
+      "origin": [
+        -0.042,
+        0.0,
+        -0.026
+      ],
+      "rot0_wxyz": [
+        -0.5,
+        -0.499999998,
+        -0.500000002,
+        0.5
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -90.0,
+        90.0
+      ]
+    }
+  ],
+  "tool": {
+    "link": "right_foot",
+    "origin": [
+      0.0,
+      -0.0238146,
+      -0.0140852
+    ],
+    "rpy": [
+      -1.57079619,
+      -1.62209283e-34,
+      -5.47888273e-33
+    ]
+  },
+  "notes": [
+    "Written by tools/make_microduck.py from microduck.urdf: one limb as a serial chain from the trunk.",
+    "Per joint: T(theta) = translate(origin) * R(rot0) * Rx(theta) * R(rot1)^-1",
+    "tool: the fixed frame after the last joint (the foot, or the mouth tip), in that joint's link frame."
+  ]
+}
