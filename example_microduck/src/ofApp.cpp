@@ -7,7 +7,19 @@ void ofApp::setup() {
 
     if (!_duck.setup("microduck")) { ofLogError("ofApp") << "setup failed"; ofExit(1); return; }
     if (_startRun) _duck.setSkill(Microduck::Run);
-    if (_check) { runCheck(); return; }
+    _duck.setSpawn(0.0, 0.0, 0.0);
+    _duck.reset();
+    if (_chain) {   // four followers in a line behind it, each following the one ahead
+        for (int i = 0; i < 4; ++i) {
+            auto f = std::make_unique<Microduck>();
+            if (!f->setup("microduck", 1u << Microduck::Follow)) { ofLogError("ofApp") << "follower setup failed"; ofExit(1); return; }
+            f->setSpawn(-0.8 * (i + 1), 0.0, 0.0);
+            f->reset();
+            f->follow(i == 0 ? &_duck : _followers.back().get());
+            _followers.push_back(std::move(f));
+        }
+    }
+    if (_check) { if (_chain && !_startRun) runChainCheck(); else runCheck(); return; }
 
     // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame): a triangle soup with
     // flat normals, one ofVboMesh per mesh.
@@ -41,7 +53,10 @@ void ofApp::setup() {
     _cam.setTarget(_focus);
     _cam.setPosition(_focus + glm::vec3(0.35f, -0.45f, 0.22f));
     _cam.lookAt(_focus, glm::vec3(0, 0, 1));
-    if (!_check) _duck.startThread();
+    if (!_check) {
+        _duck.startThread();
+        for (auto& f : _followers) f->startThread();
+    }
 }
 
 // A walk without a window: forward at 0.3 m/s. Judged on staying up, getting somewhere, and ofxRobot's forward
@@ -98,6 +113,52 @@ void ofApp::runCheck() {
     ofExit(ok ? 0 : 1);
 }
 
+void ofApp::exit() {
+    for (auto& f : _followers) f->stopThread();
+    _duck.stopThread();
+}
+
+// The chain, without a window: the first robot walks forward at 0.3 m/s and each of the four others follows the one ahead.
+// Passes when all five stay up and every follower ends up within 1.2 m of the robot it follows (it was started 0.8 m behind
+// it, and the policy keeps 0.6 m).
+void ofApp::runChainCheck() {
+    std::vector<Microduck*> bots{&_duck};
+    for (auto& f : _followers) bots.push_back(f.get());
+    for (Microduck* b : bots) b->reset();
+    _duck.setCommand(0.3f, 0.f, 0.f);
+    const int total = (int)(_checkSeconds / 0.02);
+    std::vector<double> worstUp(bots.size(), 1.0), closest(bots.size(), 1e9);
+    int steps = 0;
+    for (; steps < total; ++steps) {
+        for (Microduck* b : bots) b->policyStep();
+        bool down = false;
+        for (size_t i = 0; i < bots.size(); ++i) {
+            worstUp[i] = std::min(worstUp[i], bots[i]->uprightness());
+            if (i > 0) closest[i] = std::min(closest[i], glm::length(glm::dvec2(bots[i]->trunkPos()) - glm::dvec2(bots[i - 1]->trunkPos())));
+            if (bots[i]->faulted() || bots[i]->uprightness() < 0.5) down = true;
+        }
+        if (steps % 150 == 149) {
+            std::string line = "  t=" + ofToString((steps + 1) * 0.02, 0) + " s  x:";
+            for (Microduck* b : bots) line += " " + ofToString(b->trunkPos().x, 2);
+            line += "   gaps:";
+            for (size_t i = 1; i < bots.size(); ++i) line += " " + ofToString(bots[i]->targetDistance(), 2);
+            ofLogNotice("microduck") << line;
+        }
+        if (down) break;
+    }
+    bool ok = steps == total;
+    for (size_t i = 0; i < bots.size(); ++i) {
+        const double gap = i > 0 ? bots[i]->targetDistance() : 0.0;
+        if (i > 0 && gap > 1.2) ok = false;
+        ofLogNotice("microduck") << (i == 0 ? "  walker" : "  follower " + ofToString(i)) << ": worst tilt (up = 1) " << worstUp[i]
+                                 << (i > 0 ? ", " + ofToString(gap, 2) + " m behind the one ahead at the end (closest " + ofToString(closest[i], 2) + " m)" : std::string(""))
+                                 << (bots[i]->faulted() ? ", FAULT " + bots[i]->faultReason() : std::string(""));
+    }
+    ofLogNotice("microduck") << (ok ? "PASS" : "FAIL") << ": chain of " << bots.size() << ", " << steps * 0.02 << " s, the walker went "
+                             << bots[0]->trunkPos().x << " m";
+    ofExit(ok ? 0 : 1);
+}
+
 void ofApp::update() {
     if (_check) return;
     std::lock_guard<std::mutex> lock(_duck.mutex);   // the simulation runs on its own thread
@@ -114,7 +175,10 @@ void ofApp::update() {
     _lastSim = sim;
 
     const glm::vec3 p(_duck.trunkPos());
-    _focus += (p - _focus) * 0.15f;
+    glm::vec3 centre = p;                                        // the camera follows the whole group
+    for (auto& f : _followers) centre += glm::vec3(f->publishedPos());
+    centre /= float(1 + _followers.size());
+    _focus += (centre - _focus) * 0.15f;
     _cam.setTarget(_focus);                       // re-aims with a Y-up default, so put Z back up
     _cam.lookAt(_focus, glm::vec3(0, 0, 1));
     if (_trail.size() == 0 || glm::distance(_trail.getVertices().back(), glm::vec3(p.x, p.y, 0.002f)) > 0.01f)
@@ -130,9 +194,11 @@ glm::mat4 ofApp::toMat4(const double* pos, const double* mat) const {
     return M;
 }
 
-void ofApp::drawRobot() {
-    const mjModel* m = _duck.model();
-    const mjData* d = _duck.data();
+void ofApp::drawRobot(Microduck& duck, const ofFloatColor& tint, bool lockIt) {
+    std::unique_lock<std::mutex> lock(duck.mutex, std::defer_lock);
+    if (lockIt) lock.lock();
+    const mjModel* m = duck.model();
+    const mjData* d = duck.data();
     ofMaterial mat;
     mat.setShininess(30.f);
     for (int g = 0; g < m->ngeom; ++g) {
@@ -140,7 +206,7 @@ void ofApp::drawRobot() {
         const bool collision = m->geom_contype[g] != 0 || m->geom_conaffinity[g] != 0;
         if (collision != _showCollision) continue;     // draw the visual geometry, or (g) the collision geometry
         const float* c = m->geom_rgba + 4 * g;
-        mat.setDiffuseColor(ofFloatColor(c[0], c[1], c[2], 1.f));
+        mat.setDiffuseColor(ofFloatColor(c[0] * tint.r, c[1] * tint.g, c[2] * tint.b, 1.f));
         mat.setSpecularColor(ofFloatColor(0.3f));
         mat.begin();
         ofPushMatrix();
@@ -207,7 +273,9 @@ void ofApp::draw() {
 
     ofEnableLighting();
     _light.enable();
-    drawRobot();
+    drawRobot(_duck, ofFloatColor(1.f), false);                   // (draw() already holds its lock)
+    static const ofFloatColor tints[4] = {ofFloatColor(1.f, 0.55f, 0.55f), ofFloatColor(0.55f, 1.f, 0.55f), ofFloatColor(0.55f, 0.7f, 1.f), ofFloatColor(1.f, 1.f, 0.5f)};
+    for (size_t i = 0; i < _followers.size(); ++i) drawRobot(*_followers[i], tints[i % 4], true);
     _light.disable();
     ofDisableLighting();
     if (_duck.skill() == Microduck::Walk) {   // the look-at target: it moves with the robot (the walk policy ignores it)
@@ -244,6 +312,11 @@ void ofApp::draw() {
          " m/s   turn " + ofToString(_duck.command().z, 2) + " rad/s (given to the policy: " + ofToString(_duck.appliedCommand().z, 2) + ", heading held)\n";
     s += "walking  forward " + ofToString(vb.x, 2) + " m/s   sideways " + ofToString(vb.y, 2) + " m/s   tilt " +
          ofToString(tilt, 1) + " deg   sim " + ofToString(_duck.simTime(), 1) + " s (" + ofToString(_realtime, 2) + "x real time)\n";
+    if (!_followers.empty()) {
+        s += "followers, each behind the one ahead (m): ";
+        for (auto& f : _followers) s += ofToString(f->targetDistance(), 2) + "  ";
+        s += "\n";
+    }
     s += "policy " + ofToString(_duck.policyMicros(), 0) + " us/step   ofxRobot FK vs simulation: " +
          ofToString(_duck.maxFkErrorMm(), 2) + " mm   safety gate: " +
          (_duck.faulted() ? "FAULT " + _duck.faultReason() + " (f clears)" : std::string("ok")) + "\n";
@@ -266,8 +339,16 @@ void ofApp::keyPressed(int key) {
         case '.': _vy -= 0.05f; break;
         case ' ': if (walk) _vx = _vy = _wz = 0.f; else _duck.placeTarget(2.5, 0.0); break;
         case 'x': _duck.push(0.f, 0.25f); break;
-        case 'r': _duck.reset(); _trail.clear(); break;
-        case 'p': _duck.paused = !_duck.paused; break;
+        case 'r':
+            _duck.reset(); _trail.clear();
+            for (auto& f : _followers) { std::lock_guard<std::mutex> fl(f->mutex); f->reset(); }
+            break;
+        case 'p': {
+            const bool pause = !_duck.paused;
+            _duck.paused = pause;
+            for (auto& f : _followers) f->paused = pause;
+            break;
+        }
         case 'k': _showKinematics = !_showKinematics; break;
         case 'g': _showCollision = !_showCollision; break;
         case 'f': _duck.clearFault(); break;

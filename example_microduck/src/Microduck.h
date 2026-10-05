@@ -48,7 +48,11 @@ public:
     std::mutex mutex;
 
     // `dir` is the folder under bin/data that holds microduck.xml, microduck.json, the limb descriptors and walker.onnx.
-    bool setup(const std::string& dir);
+    // `skills` picks which policies to load, as bits of Skill: a controllable robot loads Walk and Run, a follower Follow.
+    bool setup(const std::string& dir, unsigned skills = (1u << 0) | (1u << 1));
+    // Where it stands after reset(): a position on the floor and the way it faces. Robots in separate Microduck objects
+    // are separate MuJoCo worlds that share one coordinate frame, so they pass through each other instead of colliding.
+    void setSpawn(double x, double y, double yawRadians) { _spawn = glm::dvec3(x, y, 0.0); _spawnYaw = yawRadians; }
     void reset();
 
     // The velocity command, in the body frame: forward m/s, sideways m/s, turn rad/s. Clamped to what it was trained on.
@@ -76,11 +80,15 @@ public:
 
     // The two policies it can run, one at a time: Walk follows the velocity command; Run runs to a target on the floor and
     // stops there (the target is a point in the world, given to the policy in the robot's own frame).
-    enum Skill { Walk = 0, Run = 1 };
+    // Follow keeps a distance (0.6 m in training) behind another robot, facing it: the leader's position is the target.
+    enum Skill { Walk = 0, Run = 1, Follow = 2 };
+    void follow(const Microduck* leader) { _leader = leader; setSkill(Follow); }
+    const Microduck* leader() const { return _leader; }
+    glm::dvec3 publishedPos() const;                        // the trunk position as of the last step; safe from another robot's thread
     void setSkill(Skill s);
     Skill skill() const { return _skill; }
     bool hasSkill(Skill s) const { return _hasSkill[s]; }
-    static const char* skillName(Skill s) { return s == Walk ? "walk" : "run"; }
+    static const char* skillName(Skill s) { return s == Walk ? "walk" : s == Run ? "run" : "follow"; }
     glm::dvec3 target() const { return _target; }
     void placeTarget(double ahead, double left);           // relative to the robot's heading, on the floor
     void nudgeTarget(double ahead, double left);           // the same, added to where it is now
@@ -116,6 +124,7 @@ private:
     void observe();                             // the heading controller and the observation
     void actuateAndStep(bool actionOk);         // the targets from _act through ofxRobot's gate to the servos, then four physics steps
     bool infer(const std::vector<float>& obs, std::vector<float>& act, Skill skill);   // the policy; one thread at a time
+    void publishPose();                         // the position other robots read
     void physicsLoop();
     void inferenceLoop();
     void buildObservation();
@@ -131,11 +140,16 @@ private:
     std::vector<glm::dvec3> _tofDirs;           // the rays, in the trunk frame, v-major like Isaac Lab's lidar pattern
     double _eyeHeight = 0.0;                    // eye level above the trunk origin in the default pose
 
-    ofxOnnx _onnx[2];                           // one per skill
-    bool _hasSkill[2] = {false, false};
-    int _skillIndex[2] = {2, 3};                // its slot in the observation's skill one-hot
+    ofxOnnx _onnx[3];                           // one per skill
+    bool _hasSkill[3] = {false, false, false};
+    int _skillIndex[3] = {2, 3, 4};                // its slot in the observation's skill one-hot
     Skill _skill = Walk, _obsSkill = Walk, _mailSkill = Walk;
     glm::dvec3 _target{0.0};
+    glm::dvec3 _spawn{0.0};
+    double _spawnYaw = 0.0;
+    const Microduck* _leader = nullptr;
+    mutable std::mutex _poseMutex;
+    glm::dvec3 _pose{0.0};
     std::vector<float> _obs, _act, _last;       // 136 in, 14 out, and the last action (an input)
     std::atomic<double> _policyMicros{0.0};
 

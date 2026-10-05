@@ -92,7 +92,7 @@ void Microduck::physicsLoop() {
     }
 }
 
-bool Microduck::setup(const std::string& dir) {
+bool Microduck::setup(const std::string& dir, unsigned skills) {
     const std::string base = ofToDataPath(dir, true) + "/";
     if (!ofFile::doesFileExist(base + "microduck.xml") || !ofFile::doesFileExist(base + "microduck.json")) {
         ofLogError("Microduck") << "no model in " << base << ": run tools/make_microduck.py (see the README)";
@@ -167,9 +167,9 @@ bool Microduck::setup(const std::string& dir) {
     settings.numIntraOpThreads = 1;           // a tiny network: threads would only add cost
     settings.logLevel = OF_LOG_WARNING;
     settings.bPrintModelInfo = false;
-    for (const char* name : {"walk", "run"}) {
-        const Skill sk = std::string(name) == "walk" ? Walk : Run;
-        if (!meta["policies"].contains(name)) continue;
+    for (const char* name : {"walk", "run", "follow"}) {
+        const Skill sk = std::string(name) == "walk" ? Walk : std::string(name) == "run" ? Run : Follow;
+        if (!(skills & (1u << sk)) || !meta["policies"].contains(name)) continue;
         settings.modelPath = dir + "/" + meta["policies"][name]["file"].get<std::string>();
         _skillIndex[sk] = meta["policies"][name]["skill"].get<int>();
         if (!ofFile::doesFileExist(settings.modelPath)) continue;
@@ -177,7 +177,9 @@ bool Microduck::setup(const std::string& dir) {
         _hasSkill[sk] = true;
         ofLogNotice("Microduck") << name << " policy " << settings.modelPath;
     }
-    if (!_hasSkill[Walk]) { ofLogError("Microduck") << "no walk policy"; return false; }
+    for (int sk = 0; sk < 3; ++sk)
+        if (_hasSkill[sk]) { _skill = _obsSkill = (Skill)sk; break; }
+    if (!_hasSkill[_skill]) { ofLogError("Microduck") << "no policy loaded"; return false; }
     _obs.assign(meta["obs_dim"].get<int>(), 0.f);
     _last.assign(14, 0.f);
 
@@ -224,13 +226,14 @@ bool Microduck::setup(const std::string& dir) {
 
 void Microduck::reset() {
     mj_resetData(_m, _d);
-    _d->qpos[0] = 0.0; _d->qpos[1] = 0.0; _d->qpos[2] = _initHeight;
-    _d->qpos[3] = 1.0; _d->qpos[4] = 0.0; _d->qpos[5] = 0.0; _d->qpos[6] = 0.0;
+    _d->qpos[0] = _spawn.x; _d->qpos[1] = _spawn.y; _d->qpos[2] = _initHeight;
+    _d->qpos[3] = std::cos(_spawnYaw / 2.0); _d->qpos[4] = 0.0; _d->qpos[5] = 0.0; _d->qpos[6] = std::sin(_spawnYaw / 2.0);
     for (size_t i = 0; i < _obsQpos.size(); ++i) _d->qpos[_obsQpos[i]] = _defaultObs[i];
     for (size_t i = 0; i < _actuator.size(); ++i) _d->ctrl[_actuator[i]] = _defaultAct[i];
     mj_forward(_m, _d);
     _headingTarget = heading();
     placeTarget(2.5, 0.0);
+    publishPose();
     {   // eye level: the head camera (jaw_soft body, offset in its frame) in the default pose, above the trunk
         const int head = mj_name2id(_m, mjOBJ_BODY, "jaw_soft");
         if (head >= 0) {
@@ -321,7 +324,18 @@ void Microduck::buildObservation() {
     for (int i = 0; i < _numSkills; ++i) _obs[k++] = i == _skillIndex[_obsSkill] ? 1.f : 0.f;   // the skill command
     for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];                          // velocity_command: vx, vy, wz (zeros for run)
     if (_obsSkill == Run) put(Rt * (_target - trunkPos()));                       // target: the point on the floor, in the trunk frame
+    else if (_obsSkill == Follow && _leader) put(Rt * (_leader->publishedPos() + glm::dvec3(0.0, 0.0, 0.1) - trunkPos()));   // the leader, a head height up
     else for (int i = 0; i < 3; ++i) _obs[k++] = 0.f;                             // zeros: the walk skill has none
+}
+
+void Microduck::publishPose() {
+    std::lock_guard<std::mutex> lock(_poseMutex);
+    _pose = trunkPos();
+}
+
+glm::dvec3 Microduck::publishedPos() const {
+    std::lock_guard<std::mutex> lock(_poseMutex);
+    return _pose;
 }
 
 void Microduck::setSkill(Skill s) {
@@ -345,6 +359,7 @@ void Microduck::nudgeTarget(double ahead, double left) {
 }
 
 double Microduck::targetDistance() const {
+    if (_skill == Follow && _leader) return glm::length(glm::dvec2(_leader->publishedPos()) - glm::dvec2(trunkPos()));
     return glm::length(glm::dvec2(_target) - glm::dvec2(trunkPos()));
 }
 
@@ -376,7 +391,7 @@ void Microduck::observe() {
     const double yaw = heading();
     _obsSkill = _skill;
     _applied = _cmd;
-    if (_obsSkill == Run) {                                         // the run policy is not given a velocity
+    if (_obsSkill != Walk) {                                        // the run and follow policies are not given a velocity
         _applied = glm::vec3(0.f);
         _headingTarget = yaw;
     } else if (std::fabs(_cmd.z) > 1e-3f) {
@@ -422,6 +437,7 @@ void Microduck::actuateAndStep(bool actionOk) {
     if (!std::isfinite(_d->qpos[2])) { reset(); return; }   // the physics diverged: start over
     for (Limb& l : _limbs)
         for (int i = 0; i < l.q.size(); ++i) l.q[i] = _d->qpos[l.qposAdr[i]] * 180.0 / 3.14159265358979;
+    publishPose();
 }
 
 void Microduck::push(float vx, float vy) {

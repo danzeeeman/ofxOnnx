@@ -21,24 +21,29 @@
 //   k                 show ofxRobot's kinematics: each limb's joints, and the foot where its forward kinematics puts it
 //   g                 show the collision geometry
 //   f                 clear a safety-gate fault
-//   drag, wheel       orbit / zoom the camera (it follows the robot)
+//   drag, wheel       orbit / zoom the camera (it follows the group)
+//
+// Four more microducks run the Follow policy: the first keeps 0.6 m behind the one you drive, the second behind the first, and
+// so on. They are separate simulations in one coordinate frame, so they do not collide with each other.
 //
 // Command line: --check [seconds] walks forward for that long without drawing anything and exits 0 or 1;
 // --check --threads does it in real time on the physics and inference threads;
-// --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
+// --solo is one robot, with no followers; --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
 class ofApp : public ofBaseApp {
 public:
-    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false)
-        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run) {}
+    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false, bool chain = true)
+        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run), _chain(chain) {}
 
     void setup() override;
     void update() override;
+    void exit() override;
     void draw() override;
     void keyPressed(int key) override;
 
 private:
     void runCheck();
-    void drawRobot();
+    void runChainCheck();
+    void drawRobot(Microduck& duck, const ofFloatColor& tint, bool lockIt);
     void drawKinematics();
     glm::mat4 toMat4(const double* pos, const double* mat) const;
 
@@ -46,8 +51,10 @@ private:
     double _checkSeconds = 10.0;
     bool _threaded = false;
     bool _startRun = false;
+    bool _chain = true;                  // four more robots, each following the one ahead of it
 
-    Microduck _duck;
+    Microduck _duck;                                    // the one you drive
+    std::vector<std::unique_ptr<Microduck>> _followers;  // each follows the robot ahead of it: the first follows _duck
     std::vector<ofVboMesh> _meshes;      // every mesh in the model, in the model's own frame
     ofEasyCam _cam;
     ofLight _light;
