@@ -16,13 +16,13 @@ Needs ofxRobot next to ofxOnnx (`addons/ofxRobot`) for its sources and its vendo
 ```
 build.bat                            (or open example_microduck.vcxproj)
 bin\example_microduck.exe            it starts walking straight; up/down/left/right to steer
-bin\example_microduck.exe --check 30 no window needed: the walker and the four followers for 30 simulated seconds: all upright, each within 1.2 m of the one it follows. Then the single-robot check:
+bin\example_microduck.exe --check 30 no window needed: the walker and the followers for 30 simulated seconds: all upright, each within 1.2 m of the one it follows. Then the single-robot check:
 bin\example_microduck.exe --check 15 --solo no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
 bin\example_microduck.exe --check 10 --threads   the same, in real time on the physics and inference threads
 bin\example_microduck.exe --check 15 --run       the Run policy: run to a target 3 m ahead, stop within 0.4 m of it
 ```
 
-Four more microducks run the **Follow** policy (`Isaac-Skill-Follow-Microduck`) as a chain: the first keeps about 0.6 m behind the one you drive, the second behind the first, and so on, each facing the one ahead of it. They are separate MuJoCo worlds in one coordinate frame, so they do not collide with each other (they can walk through one another), each has its own physics and inference threads, and each "sees" the robot it follows through that simulated camera; the HUD marks a follower `(lost)` while it has not seen the robot ahead for over a second. `1` / `2` switch the robot you drive between the Walk and the Run policy (the followers keep following it).
+Two more microducks (`--ducks N` for N in all; the default is 3) run the **Follow** policy (`Isaac-Skill-Follow-Microduck`) as a chain: the first keeps about 0.6 m behind the one you drive, the second behind the first, and so on, each facing the one ahead of it. They are separate MuJoCo worlds in one coordinate frame, so they do not collide with each other (they can walk through one another), each has its own physics and inference threads, and each "sees" the robot it follows through that simulated camera; the HUD marks a follower `(lost)` while it has not seen the robot ahead for over a second. `1` / `2` switch the robot you drive between the Walk and the Run policy (the followers keep following it).
 Walk: `up/down` walk, `left/right` turn, `, .` step sideways, `space` stops. Run: an orange marker on the floor is the target; hold `up/down/left/right` to move it away from, toward, or to either side of the robot (relative to the way it faces), and `space` puts it 2.5 m ahead again. It runs there, stops, and turns to look at it. `x` shoves it, `r` resets, `p` pauses, `k` shows ofxRobot's kinematics
 (each limb's joints, and the foot where its forward kinematics puts it, yellow, next to where MuJoCo has it, red: they coincide),
 `g` shows the collision geometry, `f` clears a safety-gate fault.

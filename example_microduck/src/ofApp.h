@@ -23,16 +23,16 @@
 //   f                 clear a safety-gate fault
 //   drag, wheel       orbit / zoom the camera (it follows the group)
 //
-// Four more microducks run the Follow policy: the first keeps 0.6 m behind the one you drive, the second behind the first, and
-// so on. They are separate simulations in one coordinate frame, so they do not collide with each other.
+// Two more microducks (--ducks N for N in all) run the Follow policy: the first keeps 0.6 m behind the one you drive, the
+// second behind the first, and so on. They are separate simulations in one coordinate frame, so they do not collide with each other.
 //
 // Command line: --check [seconds] walks forward for that long without drawing anything and exits 0 or 1;
 // --check --threads does it in real time on the physics and inference threads;
-// --solo is one robot, with no followers; --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
+// --ducks N is N robots in all (3 by default), --solo one robot with no followers; --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
 class ofApp : public ofBaseApp {
 public:
-    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false, bool chain = true)
-        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run), _chain(chain) {}
+    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false, int ducks = 3)
+        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run), _chain(ducks > 1), _followerCount(ducks - 1) {}
 
     void setup() override;
     void update() override;
@@ -51,7 +51,8 @@ private:
     double _checkSeconds = 10.0;
     bool _threaded = false;
     bool _startRun = false;
-    bool _chain = true;                  // four more robots, each following the one ahead of it
+    bool _chain = true;                  // more robots, each following the one ahead of it
+    int _followerCount = 2;              // so 3 robots in all by default
 
     Microduck _duck;                                    // the one you drive
     std::vector<std::unique_ptr<Microduck>> _followers;  // each follows the robot ahead of it: the first follows _duck
