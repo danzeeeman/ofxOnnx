@@ -1,4 +1,5 @@
 #include "ofApp.h"
+#include <unordered_map>
 
 void ofApp::setup() {
     ofSetFrameRate(60);
@@ -21,25 +22,91 @@ void ofApp::setup() {
     }
     if (_check) { if (_chain && !_startRun) runChainCheck(); else runCheck(); return; }
 
-    // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame): a triangle soup with
-    // flat normals, one ofVboMesh per mesh.
+    // The robots are drawn instanced: a mesh is drawn once for all of them, with each robot's transform and colour picked by
+    // gl_InstanceID. A Blinn-Phong point light, in view space.
+    const std::string vert = R"(#version 150
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform mat4 models[16];
+uniform vec3 colors[16];
+in vec4 position;
+in vec3 normal;
+out vec3 vNormal;
+out vec3 vPos;
+out vec3 vColor;
+void main() {
+    mat4 M = models[gl_InstanceID];
+    vec4 viewPos = modelViewMatrix * (M * position);
+    vPos = viewPos.xyz;
+    vNormal = mat3(modelViewMatrix) * (mat3(M) * normal);
+    vColor = colors[gl_InstanceID];
+    gl_Position = projectionMatrix * viewPos;
+})";
+    const std::string frag = R"(#version 150
+uniform vec3 lightPos;   // view space
+in vec3 vNormal;
+in vec3 vPos;
+in vec3 vColor;
+out vec4 outColor;
+void main() {
+    vec3 n = normalize(vNormal);
+    if (!gl_FrontFacing) n = -n;
+    vec3 l = normalize(lightPos - vPos);
+    vec3 v = normalize(-vPos);
+    float diff = max(dot(n, l), 0.0);
+    float spec = pow(max(dot(n, normalize(l + v)), 0.0), 30.0);
+    outColor = vec4(vColor * (0.4 + 0.75 * diff) + vec3(0.3 * spec), 1.0);
+})";
+    _shader.setupShaderFromSource(GL_VERTEX_SHADER, vert);
+    _shader.setupShaderFromSource(GL_FRAGMENT_SHADER, frag);
+    _shader.bindDefaults();
+    _shader.linkProgram();
+
+    // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame). The CAD meshes have ~800k
+    // triangles per robot, far more than a screen can show, so for drawing the vertices are merged on a 2 mm grid (vertex
+    // clustering) and given smooth normals: a few tens of thousands of triangles, the same look at this size. The physics
+    // does not use these.
     const mjModel* m = _duck.model();
+    size_t before = 0, after = 0;
     for (int i = 0; i < m->nmesh; ++i) {
         ofVboMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
-        const int v0 = m->mesh_vertadr[i], f0 = m->mesh_faceadr[i];
-        for (int f = 0; f < m->mesh_facenum[i]; ++f) {
-            glm::vec3 p[3];
-            for (int c = 0; c < 3; ++c) {
-                const int vi = m->mesh_face[3 * (f0 + f) + c];
-                p[c] = glm::vec3(m->mesh_vert[3 * (v0 + vi)], m->mesh_vert[3 * (v0 + vi) + 1], m->mesh_vert[3 * (v0 + vi) + 2]);
+        const int v0 = m->mesh_vertadr[i], f0 = m->mesh_faceadr[i], nv = m->mesh_vertnum[i];
+        const float cell = 0.002f;
+        std::unordered_map<long long, int> cellOf;
+        std::vector<int> clusterOf(nv);
+        std::vector<glm::vec3> sum, normal;
+        std::vector<int> count;
+        for (int v = 0; v < nv; ++v) {
+            const glm::vec3 p(m->mesh_vert[3 * (v0 + v)], m->mesh_vert[3 * (v0 + v) + 1], m->mesh_vert[3 * (v0 + v) + 2]);
+            const long long kx = (long long)std::floor(p.x / cell) + 100000, ky = (long long)std::floor(p.y / cell) + 100000, kz = (long long)std::floor(p.z / cell) + 100000;
+            const long long key = (kx << 42) ^ (ky << 21) ^ kz;
+            auto it = cellOf.find(key);
+            if (it == cellOf.end()) {
+                it = cellOf.emplace(key, (int)sum.size()).first;
+                sum.emplace_back(0.f); normal.emplace_back(0.f); count.push_back(0);
             }
-            glm::vec3 n = glm::cross(p[1] - p[0], p[2] - p[0]);
-            n = glm::length(n) > 0.f ? glm::normalize(n) : glm::vec3(0, 0, 1);
-            for (int c = 0; c < 3; ++c) { mesh.addVertex(p[c]); mesh.addNormal(n); }
+            clusterOf[v] = it->second;
+            sum[it->second] += p;
+            count[it->second]++;
+        }
+        for (int f = 0; f < m->mesh_facenum[i]; ++f) {
+            const int a = clusterOf[m->mesh_face[3 * (f0 + f)]], b = clusterOf[m->mesh_face[3 * (f0 + f) + 1]], c = clusterOf[m->mesh_face[3 * (f0 + f) + 2]];
+            ++before;
+            if (a == b || b == c || a == c) continue;            // collapsed
+            const glm::vec3 pa = sum[a] / float(count[a]), pb = sum[b] / float(count[b]), pc = sum[c] / float(count[c]);
+            const glm::vec3 n = glm::cross(pb - pa, pc - pa);    // (area weighted)
+            normal[a] += n; normal[b] += n; normal[c] += n;
+            mesh.addIndex(a); mesh.addIndex(b); mesh.addIndex(c);
+            ++after;
+        }
+        for (size_t k = 0; k < sum.size(); ++k) {
+            mesh.addVertex(sum[k] / float(count[k]));
+            mesh.addNormal(glm::length(normal[k]) > 0.f ? glm::normalize(normal[k]) : glm::vec3(0, 0, 1));
         }
         _meshes.push_back(mesh);
     }
+    ofLogNotice("ofApp") << "display meshes: " << before << " triangles simplified to " << after;
 
     _light.setPointLight();
     _light.setPosition(0.6f, -0.8f, 1.6f);
@@ -50,8 +117,10 @@ void ofApp::setup() {
     _cam.setNearClip(0.005f);
     _cam.setFarClip(50.f);
     _focus = glm::vec3(_duck.trunkPos());
+    for (auto& f : _followers) _focus += glm::vec3(f->publishedPos());
+    _focus /= float(1 + _followers.size());              // the middle of the group
     _cam.setTarget(_focus);
-    _cam.setPosition(_focus + glm::vec3(0.35f, -0.45f, 0.22f));
+    _cam.setPosition(_focus + glm::vec3(0.35f, -0.45f, 0.22f) * (1.f + 0.9f * float(_followers.size())));   // further back for a longer chain
     _cam.lookAt(_focus, glm::vec3(0, 0, 1));
     if (!_check) {
         _duck.startThread();
@@ -194,27 +263,41 @@ glm::mat4 ofApp::toMat4(const double* pos, const double* mat) const {
     return M;
 }
 
-void ofApp::drawRobot(Microduck& duck, const ofFloatColor& tint, bool lockIt) {
-    std::unique_lock<std::mutex> lock(duck.mutex, std::defer_lock);
-    if (lockIt) lock.lock();
-    const mjModel* m = duck.model();
-    const mjData* d = duck.data();
-    ofMaterial mat;
-    mat.setShininess(30.f);
+void ofApp::drawRobots() {
+    // Every robot's geom poses, copied under that robot's lock (the leader's is held by draw()), so that the physics threads
+    // are not held up while drawing.
+    std::vector<Microduck*> bots{&_duck};
+    for (auto& f : _followers) bots.push_back(f.get());
+    const mjModel* m = _duck.model();                      // the same model, once per robot
+    const int n = (int)bots.size();
+    std::vector<std::vector<glm::mat4>> pose(n, std::vector<glm::mat4>(m->ngeom));
+    for (int b = 0; b < n; ++b) {
+        std::unique_lock<std::mutex> lock(bots[b]->mutex, std::defer_lock);
+        if (b > 0) lock.lock();
+        const mjData* d = bots[b]->data();
+        for (int g = 0; g < m->ngeom; ++g)
+            if (m->geom_type[g] == mjGEOM_MESH) pose[b][g] = toMat4(d->geom_xpos + 3 * g, d->geom_xmat + 9 * g);
+    }
+    static const glm::vec3 tints[5] = {glm::vec3(1.f), glm::vec3(1.f, 0.55f, 0.55f), glm::vec3(0.55f, 1.f, 0.55f), glm::vec3(0.55f, 0.7f, 1.f), glm::vec3(1.f, 1.f, 0.5f)};
+    const glm::vec4 light = ofGetCurrentViewMatrix() * glm::vec4(0.6f, -0.8f, 1.6f, 1.f);
+    _shader.begin();
+    _shader.setUniform3f("lightPos", glm::vec3(light));
+    std::vector<glm::vec3> colors(n);
     for (int g = 0; g < m->ngeom; ++g) {
         if (m->geom_type[g] != mjGEOM_MESH) continue;
         const bool collision = m->geom_contype[g] != 0 || m->geom_conaffinity[g] != 0;
-        if (collision != _showCollision) continue;     // draw the visual geometry, or (g) the collision geometry
+        if (collision != _showCollision) continue;         // draw the visual geometry, or (g) the collision geometry
         const float* c = m->geom_rgba + 4 * g;
-        mat.setDiffuseColor(ofFloatColor(c[0] * tint.r, c[1] * tint.g, c[2] * tint.b, 1.f));
-        mat.setSpecularColor(ofFloatColor(0.3f));
-        mat.begin();
-        ofPushMatrix();
-        ofMultMatrix(toMat4(d->geom_xpos + 3 * g, d->geom_xmat + 9 * g));
-        _meshes[m->geom_dataid[g]].draw();
-        ofPopMatrix();
-        mat.end();
+        std::vector<glm::mat4> models(n);
+        for (int b = 0; b < n; ++b) {
+            models[b] = pose[b][g];
+            colors[b] = glm::vec3(c[0], c[1], c[2]) * tints[b % 5];
+        }
+        _shader.setUniformMatrix4f("models", models[0], n);
+        _shader.setUniform3fv("colors", &colors[0].x, n);
+        _meshes[m->geom_dataid[g]].drawInstanced(OF_MESH_FILL, n);
     }
+    _shader.end();
 }
 
 // ofxRobot's view of the robot: each limb's joints from RobotKinematics + ArmIk forward kinematics, and where that
@@ -271,13 +354,7 @@ void ofApp::draw() {
     _trail.draw();
     ofSetLineWidth(1.f);
 
-    ofEnableLighting();
-    _light.enable();
-    drawRobot(_duck, ofFloatColor(1.f), false);                   // (draw() already holds its lock)
-    static const ofFloatColor tints[4] = {ofFloatColor(1.f, 0.55f, 0.55f), ofFloatColor(0.55f, 1.f, 0.55f), ofFloatColor(0.55f, 0.7f, 1.f), ofFloatColor(1.f, 1.f, 0.5f)};
-    for (size_t i = 0; i < _followers.size(); ++i) drawRobot(*_followers[i], tints[i % 4], true);
-    _light.disable();
-    ofDisableLighting();
+    drawRobots();
     if (_duck.skill() == Microduck::Walk) {   // the look-at target: it moves with the robot (the walk policy ignores it)
         const glm::dvec3 t = _duck.lookTarget();
         ofSetColor(255, 50, 50);
@@ -311,7 +388,7 @@ void ofApp::draw() {
     else s += "command  forward " + ofToString(_duck.command().x, 2) + " m/s   sideways " + ofToString(_duck.command().y, 2) +
          " m/s   turn " + ofToString(_duck.command().z, 2) + " rad/s (given to the policy: " + ofToString(_duck.appliedCommand().z, 2) + ", heading held)\n";
     s += "walking  forward " + ofToString(vb.x, 2) + " m/s   sideways " + ofToString(vb.y, 2) + " m/s   tilt " +
-         ofToString(tilt, 1) + " deg   sim " + ofToString(_duck.simTime(), 1) + " s (" + ofToString(_realtime, 2) + "x real time)\n";
+         ofToString(tilt, 1) + " deg   sim " + ofToString(_duck.simTime(), 1) + " s (" + ofToString(_realtime, 2) + "x real time)   " + ofToString(ofGetFrameRate(), 0) + " fps\n";
     if (!_followers.empty()) {
         s += "followers, each behind the one ahead (m): ";
         for (auto& f : _followers) s += ofToString(f->targetDistance(), 2) + (f->trackingLost() ? "(lost)  " : "  ");

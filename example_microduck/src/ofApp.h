@@ -43,7 +43,7 @@ public:
 private:
     void runCheck();
     void runChainCheck();
-    void drawRobot(Microduck& duck, const ofFloatColor& tint, bool lockIt);
+    void drawRobots();                  // every robot, one instanced draw per mesh
     void drawKinematics();
     glm::mat4 toMat4(const double* pos, const double* mat) const;
 
@@ -58,6 +58,7 @@ private:
     std::vector<std::unique_ptr<Microduck>> _followers;  // each follows the robot ahead of it: the first follows _duck
     std::vector<ofVboMesh> _meshes;      // every mesh in the model, in the model's own frame
     ofEasyCam _cam;
+    ofShader _shader;                    // lit, with one transform and colour per instance (per robot)
     ofLight _light;
     ofPolyline _trail;
     glm::vec3 _focus{0.f};
