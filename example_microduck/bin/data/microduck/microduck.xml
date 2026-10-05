@@ -47,7 +47,7 @@
   <worldbody>
     <geom name="floor" size="20 20 0.1" type="plane" contype="0"/>
     <body name="trunk_base">
-      <inertial pos="-0.0226332 -2.70828e-05 0.00280064" quat="0.664866 0.238381 0.235012 0.667756" mass="0.199224" diaginertia="0.000145932 0.000140799 9.85265e-05"/>
+      <inertial pos="-0.0557715 -2.70828e-05 0.00229317" quat="0.664866 0.238381 0.235012 0.667756" mass="0.373224" diaginertia="0.000273387 0.000263771 0.000184578"/>
       <joint type="free"/>
       <geom pos="0.006 0.0175 -0.005" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.811765 0.858824 0.898039 1" density="0" mesh="seeed_bearing__configuration__22x16x4"/>
       <geom pos="0.004 -0.0005 -0.0175" quat="0.707107 0 0 0.707107" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.85098 0.85098 0.839216 1" density="0" mesh="right_shell"/>
@@ -61,6 +61,7 @@
       <geom pos="0.006 -0.0175 0.0115" quat="1.26918e-09 0.707107 -1.26918e-09 0.707107" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.286275 0.286275 0.286275 1" density="0" mesh="xl330"/>
       <geom pos="0.004 0 -0.0175785" quat="0.707107 0 0 0.707107" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.8 0.8 0.8 1" density="0" mesh="left_shell"/>
       <geom pos="0.006 -0.0175 -0.005" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.811765 0.858824 0.898039 1" density="0" mesh="seeed_bearing__configuration__22x16x4"/>
+      <site name="imu_body" size="0.002" pos="-0.021 0 -0.0147"/>
       <body name="imu" pos="-0.021 6.64098e-05 -0.0146984"/>
       <body name="yaw2roll" pos="0.006 0.0175 -0.005" quat="1.26918e-09 -0.707107 -0.707107 1.26918e-09">
         <inertial pos="-8.8e-11 0.00099414 0.0168917" quat="0.99973 -0.0232487 0 0" mass="0.0230406" diaginertia="4.1964e-06 3.41989e-06 2.32413e-06"/>
@@ -123,7 +124,7 @@
             <geom pos="-0.016 0 0.0145" quat="0.707107 0 -0.707107 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.811765 0.858824 0.898039 1" density="0" mesh="seeed_bearing__configuration__22x16x4"/>
             <geom pos="0.018 0 0.0145" quat="0.707107 0 -0.707107 0" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.811765 0.858824 0.898039 1" density="0" mesh="seeed_bearing__configuration__22x16x4"/>
             <body name="jaw_soft" pos="-0.0179 0 0.0145" quat="0.707107 0 -0.707107 0">
-              <inertial pos="0.00460523 0.00120047 -0.0324761" quat="0.999608 0.0201482 -0.0191644 -0.00313933" mass="0.188766" diaginertia="0.000321067 0.000254266 0.000149461"/>
+              <inertial pos="0.0051564 0.00120149 -0.0348703" quat="0.999608 0.0201482 -0.0191644 -0.00313933" mass="0.195766" diaginertia="0.000332973 0.000263695 0.000155003"/>
               <joint name="head_roll" range="-0.436332 0.436332" actuatorfrcrange="-0.96 0.96" armature="0.005"/>
               <geom pos="0.0155 -9.13778e-05 -0.05548" quat="0.5 -0.5 0.5 -0.5" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.262745 0.282353 0.301961 1" density="0" mesh="lens"/>
               <geom pos="-0.0045 -9.13778e-05 -0.0178" quat="0.5 0.5 0.5 0.5" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.67451 0.639216 0.603922 1" density="0" mesh="face_part"/>
@@ -144,6 +145,7 @@
               <geom pos="0.0155 -9.13778e-05 -0.05558" quat="0.5 -0.5 0.5 -0.5" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.262745 0.282353 0.301961 1" density="0" mesh="m12_lens_holder"/>
               <geom pos="0.015435 -1.13778e-05 -0.06001" quat="0.5 -0.5 -0.5 0.5" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.498039 0.498039 0.498039 1" density="0" mesh="pcb__raspberry_pi_zero_2_w"/>
               <geom pos="0.01 -0.016786 0.0260226" quat="0.5 0.5 0.5 0.5" type="mesh" contype="0" conaffinity="0" group="1" rgba="0.294118 0.290196 0.290196 1" density="0" mesh="speaker"/>
+              <site name="imu_head" size="0.002" pos="0.0152 0.0001 -0.0511"/>
               <body name="head_camera" pos="0.0155 -9.13778e-05 -0.0733" quat="0.707107 0 0.707107 0"/>
               <body name="tof" pos="0.0135 0.0224086 -0.0733" quat="0.707107 0 0.707107 0"/>
               <body name="head_imu" pos="0.0152323 0.000111069 -0.05106"/>
@@ -197,19 +199,26 @@
   </worldbody>
 
   <actuator>
-    <general name="left_hip_yaw" joint="left_hip_yaw" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="left_hip_roll" joint="left_hip_roll" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="left_hip_pitch" joint="left_hip_pitch" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="left_knee" joint="left_knee" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="left_ankle" joint="left_ankle" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="neck_pitch" joint="neck_pitch" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="head_pitch" joint="head_pitch" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="head_yaw" joint="head_yaw" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="head_roll" joint="head_roll" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="right_hip_yaw" joint="right_hip_yaw" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="right_hip_roll" joint="right_hip_roll" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="right_hip_pitch" joint="right_hip_pitch" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="right_knee" joint="right_knee" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
-    <general name="right_ankle" joint="right_ankle" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="left_hip_yaw" joint="left_hip_yaw" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="left_hip_roll" joint="left_hip_roll" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="left_hip_pitch" joint="left_hip_pitch" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="left_knee" joint="left_knee" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="left_ankle" joint="left_ankle" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="neck_pitch" joint="neck_pitch" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="head_pitch" joint="head_pitch" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="head_yaw" joint="head_yaw" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="head_roll" joint="head_roll" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="right_hip_yaw" joint="right_hip_yaw" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="right_hip_roll" joint="right_hip_roll" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="right_hip_pitch" joint="right_hip_pitch" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="right_knee" joint="right_knee" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
+    <general name="right_ankle" joint="right_ankle" forcelimited="true" forcerange="-0.96 0.96" biastype="affine" gainprm="2" biasprm="0 -2 -0.1"/>
   </actuator>
+
+  <sensor>
+    <accelerometer site="imu_body" name="imu_body_acc"/>
+    <gyro site="imu_body" name="imu_body_gyro"/>
+    <accelerometer site="imu_head" name="imu_head_acc"/>
+    <gyro site="imu_head" name="imu_head_gyro"/>
+  </sensor>
 </mujoco>
