@@ -366,6 +366,7 @@ glm::dvec3 Microduck::cameraTarget(const glm::dvec3& targetWorld) {
 void Microduck::publishPose() {
     std::lock_guard<std::mutex> lock(_poseMutex);
     _pose = trunkPos();
+    _simTimePub = _d->time;
 }
 
 glm::dvec3 Microduck::publishedPos() const {

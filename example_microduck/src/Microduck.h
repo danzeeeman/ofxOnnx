@@ -86,7 +86,8 @@ public:
     void follow(const Microduck* leader) { _leader = leader; setSkill(Follow); }
     const Microduck* leader() const { return _leader; }
     bool trackingLost() const { return _camLost; }          // Follow: the head camera has not seen the leader for over a second
-    glm::dvec3 publishedPos() const;                        // the trunk position as of the last step; safe from another robot's thread
+    glm::dvec3 publishedPos() const;
+    double publishedSimTime() const { return _simTimePub; }                        // the trunk position as of the last step; safe from another robot's thread
     void setSkill(Skill s);
     Skill skill() const { return _skill; }
     bool hasSkill(Skill s) const { return _hasSkill[s]; }
@@ -160,6 +161,7 @@ private:
     const Microduck* _leader = nullptr;
     mutable std::mutex _poseMutex;
     glm::dvec3 _pose{0.0};
+    std::atomic<double> _simTimePub{0.0};
     std::vector<float> _obs, _act, _last;       // 136 in, 14 out, and the last action (an input)
     std::atomic<double> _policyMicros{0.0};
 
