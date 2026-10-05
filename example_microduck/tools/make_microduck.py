@@ -1,4 +1,5 @@
-"""Make the data the microduck example loads, from the robot's URDF and its trained walking policy.
+"""Make the data the microduck example loads, from the robot's URDF and its trained walking policy (the Walk skill of
+Isaac Lab's microduck_skills task: Isaac-Skill-Walk-Microduck).
 
     python make_microduck.py <microduck.urdf> <assets_parent_dir> <walker.onnx> <out_data_dir>
 
@@ -7,8 +8,10 @@ newer MuJoCo can use attributes an older one rejects).
 
 Writes into <out_data_dir>/microduck/:
   microduck.xml      the MuJoCo model: the URDF with a free joint on the trunk, the physics the policy was trained
-                     with (position actuators kp 2.0 / kd 0.1, armature 0.005, friction 1.0, robot geoms do not
-                     collide with each other), and a floor
+                     with (position actuators kp 2.0 / kd 0.1 limited to 0.96 N m, armature 0.005, friction 1.0,
+                     robot geoms do not collide with each other), the parts of the real build the URDF lacks (compute
+                     board, camera, sensors: added mass, shifted centre of mass), a body and a head IMU (a site with
+                     an accelerometer and a gyro each), and a floor
   assets/*.stl       the meshes it refers to
   left_leg.joints.json, right_leg.joints.json, head.joints.json
                      ofxRobot joint descriptors (RobotKinematics): one serial chain each, from the trunk
@@ -30,11 +33,24 @@ os.makedirs(os.path.join(out, "assets"), exist_ok=True)
 # ---- the physics the policy was trained with (IsaacLab env.yaml, Isaac-Velocity-Flat-Microduck)
 KP, KD, ARMATURE = 2.0, 0.1, 0.005
 SIM_DT, DECIMATION = 0.005, 4
-LEG_SCALE, HEAD_SCALE = 0.25, 0.5
-DEFAULT_POS = {"left_hip_roll": -0.0873, "right_hip_roll": 0.0873, "left_hip_pitch": -0.4579, "right_hip_pitch": 0.4579,
-               "left_knee": -0.0049, "right_knee": 0.0049, "left_ankle": 0.453, "right_ankle": -0.453,
+ACTION_SCALE = 0.5                                      # every joint: the skills share it
+EFFORT_LIMIT = 0.96                                     # N m, the servos' joint_effort_limit
+# the standing pose of the loaded robot (sensors_env_cfg.STANDING_POSE): the default of the observation and the action offset
+DEFAULT_POS = {"left_hip_roll": -0.0873, "right_hip_roll": 0.0873, "left_hip_pitch": -0.25, "right_hip_pitch": 0.25,
+               "left_knee": 0.0, "right_knee": 0.0, "left_ankle": 0.25, "right_ankle": -0.25,
                "neck_pitch": 0.3491, "head_pitch": 0.3491}   # every other joint 0
-INIT_HEIGHT = 0.117
+INIT_HEIGHT = 0.119
+# parts of the real build the URDF lacks: (body, mass kg, position in the body frame), from sensors_env_cfg.PAYLOAD_PARTS
+PAYLOAD = [("trunk_base", 0.140, (-0.08, 0.0, 0.0)), ("trunk_base", 0.010, (-0.06, 0.0, -0.02)),
+           ("trunk_base", 0.020, (-0.03, 0.0, 0.0)), ("trunk_base", 0.002, (0.037, 0.0, 0.02)),
+           ("trunk_base", 0.002, (-0.021, 0.0, -0.0147)), ("jaw_soft", 0.005, (0.0155, 0.0, -0.0733)),
+           ("jaw_soft", 0.002, (0.0152, 0.0001, -0.0511))]
+IMU_BODY = ("trunk_base", (-0.021, 0.0, -0.0147))
+IMU_HEAD = ("jaw_soft", (0.0152, 0.0001, -0.0511))
+# the 8x8 time-of-flight sensor on the trunk: position, pitch up (degrees), field of view, range
+TOF = {"body": "trunk_base", "pos": [0.037, 0.0, 0.02], "pitch_up_deg": 15.0, "fov_deg": 60.0, "zones": 8,
+       "max_distance": 1.5, "min_distance": 0.03}
+SKILLS = ["sit", "stand", "walk", "run", "kick", "look"]   # the one-hot skill command; this policy is "walk"
 COMMAND_RANGE = {"vx": [-0.2, 0.4], "vy": [-0.2, 0.2], "wz": [-1.0, 1.0]}
 LEG_JOINTS = ["hip_yaw", "hip_roll", "hip_pitch", "knee", "ankle"]
 HEAD_JOINTS = ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
@@ -72,6 +88,26 @@ for g in spec.geoms:
         g.friction = [1.0, 0.005, 0.0001]
         if g.contype or g.conaffinity:      # the robot's collision geoms hit the floor and not each other (self collision is off in training)
             g.contype, g.conaffinity = 1, 0
+# the payload: Isaac Lab adds the mass to the body, scales its inertia with the mass, and shifts the centre of mass by
+# (added / total) * the mass-weighted mean position of the parts
+for bname in sorted({b for b, _, _ in PAYLOAD}):
+    parts = [(m_, p_) for b, m_, p_ in PAYLOAD if b == bname]
+    added = sum(m_ for m_, _ in parts)
+    body = spec.body(bname)
+    old = body.mass
+    ratio = added / (old + added)
+    shift = [ratio * sum(m_ * p_[i] for m_, p_ in parts) / added for i in range(3)]
+    body.mass = old + added
+    body.ipos = [body.ipos[i] + shift[i] for i in range(3)]
+    f = (old + added) / old
+    body.inertia = [v * f for v in body.inertia]
+    if not any(math.isnan(v) for v in body.fullinertia):
+        body.fullinertia = [v * f for v in body.fullinertia]
+# the two IMUs: a site with an accelerometer (proper acceleration, +g up at rest) and a gyro
+for tag, (bname, pos) in (("body", IMU_BODY), ("head", IMU_HEAD)):
+    spec.body(bname).add_site(name="imu_" + tag, pos=list(pos), size=[0.002, 0, 0])
+    spec.add_sensor(name="imu_%s_acc" % tag, type=mujoco.mjtSensor.mjSENS_ACCELEROMETER, objtype=mujoco.mjtObj.mjOBJ_SITE, objname="imu_" + tag)
+    spec.add_sensor(name="imu_%s_gyro" % tag, type=mujoco.mjtSensor.mjSENS_GYRO, objtype=mujoco.mjtObj.mjOBJ_SITE, objname="imu_" + tag)
 for j in spec.joints:
     if j.type == mujoco.mjtJoint.mjJNT_HINGE:
         j.armature, j.damping, j.frictionloss = ARMATURE, [0.0, 0.0, 0.0], 0.0
@@ -79,6 +115,7 @@ for j in spec.joints:
         a.gaintype, a.biastype = mujoco.mjtGain.mjGAIN_FIXED, mujoco.mjtBias.mjBIAS_AFFINE
         a.gainprm[0] = KP
         a.biasprm[:3] = [0.0, -KP, -KD]
+        a.forcelimited, a.forcerange = True, [-EFFORT_LIMIT, EFFORT_LIMIT]
 model = spec.compile()
 xml = spec.to_xml()
 xml = re.sub(r'meshdir="[^"]*"', 'meshdir="."', xml)
@@ -141,12 +178,16 @@ limb("head", HEAD_JOINTS, "mouth_tip_joint")
 meta = {
     "joint_order": order,                                   # the observation's joint order (14)
     "action_order": leg_order + head_order,                 # the policy output's order: legs, then head (14)
-    "action_scale": [LEG_SCALE] * len(leg_order) + [HEAD_SCALE] * len(head_order),
+    "action_scale": [ACTION_SCALE] * 14,
     "default_pos": {n: DEFAULT_POS.get(n, 0.0) for n in order},
     "init_height": INIT_HEIGHT, "kp": KP, "kd": KD, "sim_dt": SIM_DT, "decimation": DECIMATION,
     "command_range": COMMAND_RANGE, "trunk_body": base,
-    "observation": ["base_lin_vel(3, body)", "base_ang_vel(3, body)", "projected_gravity(3)", "velocity_command(3: vx vy wz)",
-                    "joint_pos - default(14)", "joint_vel(14)", "last_action(14)", "look_at_target(3, zeros)"],
+    "observation": ["body IMU gyro(3)", "projected_gravity(3, trunk)", "body IMU accelerometer * 0.1 (3)", "joint_pos - default(14)",
+                    "joint_vel(14)", "last_action(14)", "head IMU gyro(3)", "head IMU accelerometer * 0.1 (3)",
+                    "head gravity(3, in the jaw_soft frame)", "time-of-flight 8x8 (64, distance / max, v-major)",
+                    "skill one-hot(6)", "velocity_command(3: vx vy wz)", "target(3, zeros for walk)"],
+    "sensors": {"body_acc": "imu_body_acc", "body_gyro": "imu_body_gyro", "head_acc": "imu_head_acc", "head_gyro": "imu_head_gyro"},
+    "head_body": "jaw_soft", "tof": TOF, "skill": SKILLS.index("walk"), "num_skills": len(SKILLS), "obs_dim": 136,
     "limbs": {"left_leg": "left_leg.joints.json", "right_leg": "right_leg.joints.json", "head": "head.joints.json"},
 }
 json.dump(meta, open(os.path.join(out, "microduck.json"), "w"), indent=2)

@@ -12,7 +12,7 @@
 // The microduck biped, walking: three libraries doing three jobs.
 //
 //   MuJoCo      the physics: the robot's bodies, joints, servos (position actuators) and the floor
-//   ofxOnnx     the brain: a walking policy, 57 numbers in, 14 joint targets out, 50 times a second
+//   ofxOnnx     the brain: a walking policy, 136 numbers in (IMUs, joints, time-of-flight, command), 14 joint targets out, 50 times a second
 //   ofxRobot    the robot as data: each limb (two legs, the head) is a serial chain loaded from a JSON descriptor
 //               (RobotKinematics), whose forward kinematics (ArmIk) gives the joint and foot positions; and a
 //               MotionSafetyGate per limb checks every set of joint targets before it reaches the servos
@@ -58,9 +58,9 @@ public:
     glm::vec3 appliedCommand() const { return _applied; }
     double heading() const;                     // yaw, radians
 
-    // The point the head is asked to look at: lookDistance metres ahead of the trunk along its heading, at eye level,
-    // moving with the robot (Isaac Lab attaches it to the yaw-aligned root frame, so roll and pitch do not move it).
-    // The policy was trained with it 0.4-1.2 m away; further than that is outside what it saw.
+    // A point lookDistance metres ahead of the trunk along its heading, at eye level, moving with the robot and swaying
+    // left and right. It is only drawn: the Walk policy has no look-at input (its target slot is zero; the separate Look
+    // skill is the one that takes a target).
     glm::dvec3 lookTarget() const;
     float lookDistance = 2.f;
     float lookSwayMetres = 0.05f;               // it shifts this far left and right of straight ahead...
@@ -104,10 +104,16 @@ private:
     mjModel* _m = nullptr;
     mjData* _d = nullptr;
     int _trunk = -1;
+    // The sensors of the real robot that the policy reads: two IMUs (sensor addresses into mjData::sensordata), the head's
+    // body, and the time-of-flight sensor (a grid of rays out of the trunk).
+    int _accBody = -1, _gyroBody = -1, _accHead = -1, _gyroHead = -1, _headBody = -1;
+    int _skill = 0, _numSkills = 6;
+    struct Tof { glm::dvec3 pos{0.037, 0.0, 0.02}; double pitchUp = 15.0, fov = 60.0, maxDistance = 1.5, minDistance = 0.03; int zones = 8; } _tof;
+    std::vector<glm::dvec3> _tofDirs;           // the rays, in the trunk frame, v-major like Isaac Lab's lidar pattern
     double _eyeHeight = 0.0;                    // eye level above the trunk origin in the default pose
 
     ofxOnnx _onnx;
-    std::vector<float> _obs, _act, _last;       // 57 in, 14 out, and the last action (an input)
+    std::vector<float> _obs, _act, _last;       // 136 in, 14 out, and the last action (an input)
     double _policyMicros = 0.0;
 
     // From microduck.json.

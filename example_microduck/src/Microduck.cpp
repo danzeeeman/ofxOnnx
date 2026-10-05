@@ -79,6 +79,33 @@ bool Microduck::setup(const std::string& dir) {
     _rangeY = {r["vy"][0].get<float>(), r["vy"][1].get<float>()};
     _rangeZ = {r["wz"][0].get<float>(), r["wz"][1].get<float>()};
 
+    // 2b. The sensors: the IMUs' accelerometers and gyros, and the time-of-flight grid.
+    auto sensorAdr = [&](const char* key) {
+        const int id = mj_name2id(_m, mjOBJ_SENSOR, meta["sensors"][key].get<std::string>().c_str());
+        return id < 0 ? -1 : _m->sensor_adr[id];
+    };
+    _accBody = sensorAdr("body_acc"); _gyroBody = sensorAdr("body_gyro"); _accHead = sensorAdr("head_acc"); _gyroHead = sensorAdr("head_gyro");
+    _headBody = mj_name2id(_m, mjOBJ_BODY, meta["head_body"].get<std::string>().c_str());
+    if (_accBody < 0 || _gyroBody < 0 || _accHead < 0 || _gyroHead < 0 || _headBody < 0) { ofLogError("Microduck") << "the model lacks the IMU sensors"; return false; }
+    _skill = meta["skill"].get<int>();
+    _numSkills = meta["num_skills"].get<int>();
+    {
+        const auto& t = meta["tof"];
+        _tof.pos = glm::dvec3(t["pos"][0].get<double>(), t["pos"][1].get<double>(), t["pos"][2].get<double>());
+        _tof.pitchUp = t["pitch_up_deg"].get<double>(); _tof.fov = t["fov_deg"].get<double>(); _tof.zones = t["zones"].get<int>();
+        _tof.maxDistance = t["max_distance"].get<double>(); _tof.minDistance = t["min_distance"].get<double>();
+        // Isaac Lab's lidar pattern: `zones` x `zones` angles over the field of view (an edge zone's centre is fov/2 * (zones-1)/zones
+        // from the axis), the rays ordered vertical-major, tilted up by the mount pitch (a rotation about y by -pitch).
+        const double rad = 3.14159265358979 / 180.0, edge = _tof.fov / 2.0 * (_tof.zones - 1) / _tof.zones;
+        const double tilt = -_tof.pitchUp * rad, ct = std::cos(tilt), st = std::sin(tilt);
+        for (int v = 0; v < _tof.zones; ++v)
+            for (int hh = 0; hh < _tof.zones; ++hh) {
+                const double va = (-edge + 2.0 * edge * v / (_tof.zones - 1)) * rad, ha = (-edge + 2.0 * edge * hh / (_tof.zones - 1)) * rad;
+                const glm::dvec3 d(std::cos(va) * std::cos(ha), std::cos(va) * std::sin(ha), std::sin(va));
+                _tofDirs.push_back(glm::dvec3(ct * d.x + st * d.z, d.y, -st * d.x + ct * d.z));   // Ry(tilt)
+            }
+    }
+
     // 3. The brain.
     ofxOnnx::Settings settings;
     settings.modelPath = dir + "/walker.onnx";
@@ -86,7 +113,7 @@ bool Microduck::setup(const std::string& dir) {
     settings.logLevel = OF_LOG_WARNING;
     settings.bPrintModelInfo = false;
     if (!_onnx.load(settings)) return false;
-    _obs.assign(57, 0.f);
+    _obs.assign(meta["obs_dim"].get<int>(), 0.f);
     _last.assign(14, 0.f);
 
     // 4. The robot as ofxRobot sees it: one serial chain per limb, from a JSON descriptor, and its forward kinematics.
@@ -189,33 +216,45 @@ glm::dmat3 Microduck::trunkRot() const {
 glm::dvec3 Microduck::velocityBody() const { return glm::transpose(trunkRot()) * col3(_d->qvel); }
 double Microduck::uprightness() const { return _d->xmat[9 * _trunk + 8]; }
 
-// The policy's 57 inputs, in the order it was trained with.
+// The policy's 136 inputs, in the order it was trained with.
 double Microduck::heading() const {
     const glm::dmat3 R = trunkRot();
     return std::atan2(R[0][1], R[0][0]);
 }
 
 void Microduck::buildObservation() {
-    const glm::dmat3 Rt = glm::transpose(trunkRot());
-    // base_lin_vel: Isaac Lab's root_lin_vel_b is the velocity of the root body's centre of mass, in the body frame. A
-    // free joint's qvel is the velocity of the body-frame origin, which differs by (angular velocity) x (the offset of the
-    // centre of mass): 2.3 cm for the trunk, which at a turn rate of 1 rad/s is 2 cm/s on a 30 cm/s command.
     const glm::dmat3 R = trunkRot();
-    const glm::dvec3 omegaWorld = R * col3(_d->qvel + 3);
-    const glm::dvec3 vCom = col3(_d->qvel) + glm::cross(omegaWorld, col3(_d->xipos + 3 * _trunk) - col3(_d->xpos + 3 * _trunk));
-    const glm::dvec3 lin = Rt * vCom;
-    const glm::dvec3 ang = col3(_d->qvel + 3);                  // base_ang_vel: a free joint's angular velocity is already in the body frame
-    const glm::dvec3 grav = Rt * glm::dvec3(0.0, 0.0, -1.0);    // projected_gravity
+    const glm::dmat3 Rt = glm::transpose(R);
+    const double* sd = _d->sensordata;
+    auto s3 = [&](int adr) { return glm::dvec3(sd[adr], sd[adr + 1], sd[adr + 2]); };
     size_t k = 0;
-    for (int i = 0; i < 3; ++i) _obs[k++] = (float)lin[i];
-    for (int i = 0; i < 3; ++i) _obs[k++] = (float)ang[i];
-    for (int i = 0; i < 3; ++i) _obs[k++] = (float)grav[i];
-    for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];        // velocity_commands: vx, vy, wz
+    auto put = [&](const glm::dvec3& v, double scale = 1.0) { for (int i = 0; i < 3; ++i) _obs[k++] = (float)(v[i] * scale); };
+    put(s3(_gyroBody));                                                 // base_ang_vel: the body IMU's gyro
+    put(Rt * glm::dvec3(0.0, 0.0, -1.0));                               // projected_gravity, in the trunk frame
+    put(s3(_accBody), 0.1);                                             // base_lin_acc: the accelerometer (proper acceleration), x 0.1
     for (size_t i = 0; i < _obsQpos.size(); ++i) _obs[k++] = (float)_d->qpos[_obsQpos[i]] - _defaultObs[i];   // joint_pos_rel
     for (size_t i = 0; i < _obsDof.size(); ++i) _obs[k++] = (float)_d->qvel[_obsDof[i]];                      // joint_vel_rel
     for (size_t i = 0; i < _last.size(); ++i) _obs[k++] = _last[i];                                           // last_action
-    const glm::dvec3 look = Rt * (lookTarget() - trunkPos());                                                 // look_at_target, in the base frame
-    for (int i = 0; i < 3; ++i) _obs[k++] = (float)look[i];
+    put(s3(_gyroHead));                                                 // head_ang_vel
+    put(s3(_accHead), 0.1);                                             // head_lin_acc
+    {   // head_gravity: the direction of gravity in the head body's frame
+        const double* Rh = _d->xmat + 9 * _headBody;
+        put(glm::dvec3(-Rh[6], -Rh[7], -Rh[8]));
+    }
+    {   // tof: distances of the 8x8 rays out of the trunk, over the range; nothing seen (or only the robot's own body) is 1
+        const glm::dvec3 origin = trunkPos() + R * _tof.pos;
+        const mjtByte collisionGroup[mjNGROUP] = {1, 0, 0, 0, 0, 0};    // the collision shapes: the floor and the robot's, not its visual meshes
+        for (const glm::dvec3& dl : _tofDirs) {
+            const glm::dvec3 dir = R * dl;
+            int geom = -1;
+            double dist = mj_ray(_m, _d, &origin.x, &dir.x, collisionGroup, 1, _trunk, &geom, nullptr);
+            if (dist < 0.0 || dist < _tof.minDistance) dist = _tof.maxDistance;
+            _obs[k++] = (float)glm::clamp(dist / _tof.maxDistance, 0.0, 1.0);
+        }
+    }
+    for (int i = 0; i < _numSkills; ++i) _obs[k++] = i == _skill ? 1.f : 0.f;     // the skill command: walk
+    for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];                          // velocity_command: vx, vy, wz
+    for (int i = 0; i < 3; ++i) _obs[k++] = 0.f;                                  // target: zeros, the walk skill has none
 }
 
 glm::dvec3 Microduck::lookTarget() const {
