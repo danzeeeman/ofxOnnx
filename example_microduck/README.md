@@ -15,7 +15,7 @@ Needs ofxRobot next to ofxOnnx (`addons/ofxRobot`) for its sources and its vendo
 
 ```
 build.bat                            (or open example_microduck.vcxproj)
-bin\example_microduck.exe            it starts walking a circle; up/down/left/right to steer
+bin\example_microduck.exe            it starts walking straight; up/down/left/right to steer
 bin\example_microduck.exe --check 15 no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
 ```
 
