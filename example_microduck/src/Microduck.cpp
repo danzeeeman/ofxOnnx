@@ -31,14 +31,16 @@ void Microduck::inferenceLoop() {
     std::vector<float> obs, act;
     while (_run) {
         long seq;
+        Skill skill = Walk;
         {
             std::unique_lock<std::mutex> lock(_mail);
             _obsReady.wait(lock, [&] { return !_run || _obsSeq != _inferSeq; });
             if (!_run) return;
             obs = _mailObs;
+            skill = _mailSkill;
             seq = _inferSeq = _obsSeq;
         }
-        const bool ok = infer(obs, act);
+        const bool ok = infer(obs, act, skill);
         {
             std::lock_guard<std::mutex> lock(_mail);
             _mailAct = act;
@@ -69,6 +71,7 @@ void Microduck::physicsLoop() {
                 if (!_faulted) {
                     std::lock_guard<std::mutex> mail(_mail);
                     _mailObs = _obs;
+                    _mailSkill = _obsSkill;
                     seq = ++_obsSeq;
                 }
             }
@@ -141,7 +144,6 @@ bool Microduck::setup(const std::string& dir) {
     _accBody = sensorAdr("body_acc"); _gyroBody = sensorAdr("body_gyro"); _accHead = sensorAdr("head_acc"); _gyroHead = sensorAdr("head_gyro");
     _headBody = mj_name2id(_m, mjOBJ_BODY, meta["head_body"].get<std::string>().c_str());
     if (_accBody < 0 || _gyroBody < 0 || _accHead < 0 || _gyroHead < 0 || _headBody < 0) { ofLogError("Microduck") << "the model lacks the IMU sensors"; return false; }
-    _skill = meta["skill"].get<int>();
     _numSkills = meta["num_skills"].get<int>();
     {
         const auto& t = meta["tof"];
@@ -162,11 +164,20 @@ bool Microduck::setup(const std::string& dir) {
 
     // 3. The brain.
     ofxOnnx::Settings settings;
-    settings.modelPath = dir + "/walker.onnx";
     settings.numIntraOpThreads = 1;           // a tiny network: threads would only add cost
     settings.logLevel = OF_LOG_WARNING;
     settings.bPrintModelInfo = false;
-    if (!_onnx.load(settings)) return false;
+    for (const char* name : {"walk", "run"}) {
+        const Skill sk = std::string(name) == "walk" ? Walk : Run;
+        if (!meta["policies"].contains(name)) continue;
+        settings.modelPath = dir + "/" + meta["policies"][name]["file"].get<std::string>();
+        _skillIndex[sk] = meta["policies"][name]["skill"].get<int>();
+        if (!ofFile::doesFileExist(settings.modelPath)) continue;
+        if (!_onnx[sk].load(settings)) return false;
+        _hasSkill[sk] = true;
+        ofLogNotice("Microduck") << name << " policy " << settings.modelPath;
+    }
+    if (!_hasSkill[Walk]) { ofLogError("Microduck") << "no walk policy"; return false; }
     _obs.assign(meta["obs_dim"].get<int>(), 0.f);
     _last.assign(14, 0.f);
 
@@ -202,12 +213,12 @@ bool Microduck::setup(const std::string& dir) {
 
         // The targets come from a neural network at 50 Hz and jump by tens of degrees between steps by design, so
         // the gate is set to catch only what is wrong: NaNs, and jumps no servo could follow.
-        l.gate.params.maxJumpDegPerSec = 6000.f;
+        l.gate.params.maxJumpDegPerSec = 20000.f;
         l.q = JointVec(l.kin.numJoints());
         l.target = JointVec(l.kin.numJoints());
     }
     reset();
-    ofLogNotice("Microduck") << "ready: " << _m->nbody << " bodies, " << _limbs.size() << " limbs (ofxRobot), policy " << settings.modelPath;
+    ofLogNotice("Microduck") << "ready: " << _m->nbody << " bodies, " << _limbs.size() << " limbs (ofxRobot)";
     return true;
 }
 
@@ -219,6 +230,7 @@ void Microduck::reset() {
     for (size_t i = 0; i < _actuator.size(); ++i) _d->ctrl[_actuator[i]] = _defaultAct[i];
     mj_forward(_m, _d);
     _headingTarget = heading();
+    placeTarget(2.5, 0.0);
     {   // eye level: the head camera (jaw_soft body, offset in its frame) in the default pose, above the trunk
         const int head = mj_name2id(_m, mjOBJ_BODY, "jaw_soft");
         if (head >= 0) {
@@ -306,9 +318,34 @@ void Microduck::buildObservation() {
             _obs[k++] = (float)glm::clamp(dist / _tof.maxDistance, 0.0, 1.0);
         }
     }
-    for (int i = 0; i < _numSkills; ++i) _obs[k++] = i == _skill ? 1.f : 0.f;     // the skill command: walk
-    for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];                          // velocity_command: vx, vy, wz
-    for (int i = 0; i < 3; ++i) _obs[k++] = 0.f;                                  // target: zeros, the walk skill has none
+    for (int i = 0; i < _numSkills; ++i) _obs[k++] = i == _skillIndex[_obsSkill] ? 1.f : 0.f;   // the skill command
+    for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];                          // velocity_command: vx, vy, wz (zeros for run)
+    if (_obsSkill == Run) put(Rt * (_target - trunkPos()));                       // target: the point on the floor, in the trunk frame
+    else for (int i = 0; i < 3; ++i) _obs[k++] = 0.f;                             // zeros: the walk skill has none
+}
+
+void Microduck::setSkill(Skill s) {
+    if (!_hasSkill[s] || s == _skill) return;
+    _skill = s;
+    _headingTarget = heading();
+    if (s == Run) placeTarget(2.5, 0.0);
+}
+
+// The target is a point on the floor (0.1 m up, as in training), fixed in the world until it is moved.
+void Microduck::placeTarget(double ahead, double left) {
+    const double yaw = heading();
+    const glm::dvec3 p = trunkPos();
+    _target = glm::dvec3(p.x + ahead * std::cos(yaw) - left * std::sin(yaw), p.y + ahead * std::sin(yaw) + left * std::cos(yaw), 0.1);
+}
+
+void Microduck::nudgeTarget(double ahead, double left) {
+    const double yaw = heading();
+    _target.x += ahead * std::cos(yaw) - left * std::sin(yaw);
+    _target.y += ahead * std::sin(yaw) + left * std::cos(yaw);
+}
+
+double Microduck::targetDistance() const {
+    return glm::length(glm::dvec2(_target) - glm::dvec2(trunkPos()));
 }
 
 glm::dvec3 Microduck::lookTarget() const {
@@ -319,9 +356,9 @@ glm::dvec3 Microduck::lookTarget() const {
                                    lookDistance * std::sin(yaw) + side * std::cos(yaw), _eyeHeight);
 }
 
-bool Microduck::infer(const std::vector<float>& obs, std::vector<float>& act) {
+bool Microduck::infer(const std::vector<float>& obs, std::vector<float>& act, Skill skill) {
     const auto t0 = std::chrono::steady_clock::now();
-    const bool ok = _onnx.runFloat(obs, act) && act.size() == 14;
+    const bool ok = _onnx[skill].runFloat(obs, act) && act.size() == 14;
     _policyMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
     return ok;
 }
@@ -330,15 +367,19 @@ bool Microduck::infer(const std::vector<float>& obs, std::vector<float>& act) {
 void Microduck::policyStep() {
     observe();
     bool ok = true;
-    if (!_faulted) ok = infer(_obs, _act);
+    if (!_faulted) ok = infer(_obs, _act, _obsSkill);
     actuateAndStep(ok);
 }
 
 // The turn rate the policy is given: yours while you turn, otherwise whatever holds the heading; then the observation.
 void Microduck::observe() {
     const double yaw = heading();
+    _obsSkill = _skill;
     _applied = _cmd;
-    if (std::fabs(_cmd.z) > 1e-3f) {
+    if (_obsSkill == Run) {                                         // the run policy is not given a velocity
+        _applied = glm::vec3(0.f);
+        _headingTarget = yaw;
+    } else if (std::fabs(_cmd.z) > 1e-3f) {
         _headingTarget = yaw;
     } else {
         double err = _headingTarget - yaw;

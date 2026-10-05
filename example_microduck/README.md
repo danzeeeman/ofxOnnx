@@ -18,9 +18,11 @@ build.bat                            (or open example_microduck.vcxproj)
 bin\example_microduck.exe            it starts walking straight; up/down/left/right to steer
 bin\example_microduck.exe --check 15 no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
 bin\example_microduck.exe --check 10 --threads   the same, in real time on the physics and inference threads
+bin\example_microduck.exe --check 15 --run       the Run policy: run to a target 3 m ahead, stop within 0.4 m of it
 ```
 
-`up/down` walk, `left/right` turn, `, .` step sideways, `space` stops, `x` shoves it, `r` resets, `p` pauses, `k` shows ofxRobot's kinematics
+`1` / `2` switch between the Walk and the Run policy.
+Walk: `up/down` walk, `left/right` turn, `, .` step sideways, `space` stops. Run: an orange marker on the floor is the target; hold `up/down/left/right` to move it away from, toward, or to either side of the robot (relative to the way it faces), and `space` puts it 2.5 m ahead again. It runs there, stops, and turns to look at it. `x` shoves it, `r` resets, `p` pauses, `k` shows ofxRobot's kinematics
 (each limb's joints, and the foot where its forward kinematics puts it, yellow, next to where MuJoCo has it, red: they coincide),
 `g` shows the collision geometry, `f` clears a safety-gate fault.
 
@@ -36,7 +38,8 @@ the MuJoCo version vendored in ofxRobot: a model written by a newer one can use 
   robot geometry that does not collide with itself, and a floor: the physics the policy was trained with
 - `left_leg / right_leg / head .joints.json`: ofxRobot descriptors
 - `microduck.json`: joint order, default pose, action scales, gains, timing
-- `walker.onnx`: the policy, with its weights folded into the one file (PyTorch's exporter writes them to a `.onnx.data` file whose name is recorded
+- `runner.onnx`: the Run policy (`Isaac-Skill-Run-Microduck`): the same 136 inputs, with the velocity command zero and the target given as a point on the floor (0.1 m up) in the robot's frame
+- `walker.onnx`: the Walk policy, with its weights folded into the one file (PyTorch's exporter writes them to a `.onnx.data` file whose name is recorded
   *inside* the model, so renaming the pair breaks loading)
 - `assets/`: the meshes
 
@@ -64,4 +67,4 @@ A red sphere 2 m ahead at eye level, swaying 5 cm left and right, shows where a 
 
 The look-at sphere is only drawn: the Walk skill has no look-at input (the separate Look skill does).
 
-Not done: the other skills (run, look, sit, stand, kick) and the policy that distils them, and a hardware path (this policy's inputs are all things the real robot has: IMUs, encoders, a time-of-flight sensor).
+Not done: the other skills (look, sit, stand, kick) and the policy that distils them, and a hardware path (this policy's inputs are all things the real robot has: IMUs, encoders, a time-of-flight sensor).

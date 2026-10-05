@@ -5,10 +5,16 @@
 // A trained walking policy making a biped walk: the microduck, in MuJoCo, driven by ofxOnnx, described and checked
 // with ofxRobot. See Microduck.h for who does what.
 //
+//   1 / 2             the Walk policy / the Run policy
+// Walk:
 //   up / down         walk forward / back (velocity command, m/s)
 //   left / right      turn
 //   , and .           step sideways
 //   space             stop (zero command)
+// Run (hold the keys):
+//   up / down         move the target away from the robot / toward it
+//   left / right      move the target to the robot's left / right
+//   space             put the target 2.5 m ahead again
 //   x                 shove it
 //   r                 reset
 //   p                 pause
@@ -18,10 +24,12 @@
 //   drag, wheel       orbit / zoom the camera (it follows the robot)
 //
 // Command line: --check [seconds] walks forward for that long without drawing anything and exits 0 or 1;
-// --check --threads does it in real time on the physics and inference threads.
+// --check --threads does it in real time on the physics and inference threads;
+// --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
 class ofApp : public ofBaseApp {
 public:
-    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false) : _check(check), _checkSeconds(checkSeconds), _threaded(threaded) {}
+    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false)
+        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run) {}
 
     void setup() override;
     void update() override;
@@ -37,6 +45,7 @@ private:
     bool _check = false;
     double _checkSeconds = 10.0;
     bool _threaded = false;
+    bool _startRun = false;
 
     Microduck _duck;
     std::vector<ofVboMesh> _meshes;      // every mesh in the model, in the model's own frame

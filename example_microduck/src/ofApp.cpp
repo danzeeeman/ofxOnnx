@@ -6,6 +6,7 @@ void ofApp::setup() {
     ofSetSphereResolution(10);
 
     if (!_duck.setup("microduck")) { ofLogError("ofApp") << "setup failed"; ofExit(1); return; }
+    if (_startRun) _duck.setSkill(Microduck::Run);
     if (_check) { runCheck(); return; }
 
     // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame): a triangle soup with
@@ -47,8 +48,11 @@ void ofApp::setup() {
 // kinematics agreeing with the simulation.
 void ofApp::runCheck() {
     _duck.reset();
-    _duck.setCommand(0.3f, 0.f, 0.f);
+    const bool run = _duck.skill() == Microduck::Run;
+    if (run) _duck.placeTarget(3.0, 0.0);               // a target 3 m ahead: run to it and stop
+    else _duck.setCommand(0.3f, 0.f, 0.f);
     const glm::dvec3 start = _duck.trunkPos();
+    const double startDistance = _duck.targetDistance();
     const glm::dmat3 R0 = _duck.trunkRot();
     const glm::dvec3 heading = glm::normalize(glm::dvec3(R0[0][0], R0[0][1], 0.0));
     const double yaw0 = _duck.heading();
@@ -82,7 +86,8 @@ void ofApp::runCheck() {
     if (_threaded) _duck.stopThread();
     const double forward = glm::dot(_duck.trunkPos() - start, heading);
     const bool up = steps == total;
-    const bool ok = up && forward > 0.5 * 0.3 * _checkSeconds && worstFk < 0.01 && !_duck.faulted();
+    const bool ok = up && (run ? _duck.targetDistance() < 0.4 : forward > 0.5 * 0.3 * _checkSeconds) && worstFk < 0.01 && !_duck.faulted();
+    if (run) ofLogNotice("microduck") << "run policy: started " << startDistance << " m from the target, ended " << _duck.targetDistance() << " m from it";
     ofLogNotice("microduck") << (ok ? "PASS" : "FAIL") << ": " << (up ? "stayed up" : "FELL") << " for " << steps * 0.02
                              << " s, walked " << forward << " m forward, heading changed up to " << worstDrift << " deg, worst tilt (up = 1) " << worstUp
                              << ", ofxRobot FK vs simulation: worst " << worstFk << " mm, policy "
@@ -98,6 +103,12 @@ void ofApp::update() {
     std::lock_guard<std::mutex> lock(_duck.mutex);   // the simulation runs on its own thread
     const double wall = ofGetLastFrameTime();
     _duck.setCommand(_vx, _vy, _wz);
+    if (_duck.skill() == Microduck::Run) {   // the arrow keys, held, move the target (relative to the way the robot faces)
+        const double step = 0.8 * std::min(wall, 0.1);
+        const double ahead = (ofGetKeyPressed(OF_KEY_UP) ? step : 0.0) - (ofGetKeyPressed(OF_KEY_DOWN) ? step : 0.0);
+        const double left = (ofGetKeyPressed(OF_KEY_LEFT) ? step : 0.0) - (ofGetKeyPressed(OF_KEY_RIGHT) ? step : 0.0);
+        if (ahead != 0.0 || left != 0.0) _duck.nudgeTarget(ahead, left);
+    }
     const double sim = _duck.simTime();
     if (wall > 0.0 && sim >= _lastSim) _realtime += 0.1 * ((sim - _lastSim) / wall - _realtime);
     _lastSim = sim;
@@ -199,10 +210,24 @@ void ofApp::draw() {
     drawRobot();
     _light.disable();
     ofDisableLighting();
-    {   // the look-at target: it moves with the robot
+    if (_duck.skill() == Microduck::Walk) {   // the look-at target: it moves with the robot (the walk policy ignores it)
         const glm::dvec3 t = _duck.lookTarget();
         ofSetColor(255, 50, 50);
         ofDrawSphere(glm::vec3(t), 0.02f);
+    } else {                                  // the run policy's target: a marker on the floor that stays where it is
+        const glm::vec3 t(_duck.target());
+        ofSetColor(255, 140, 20);
+        ofDrawSphere(t, 0.03f);
+        ofSetColor(255, 140, 20, 120);
+        ofSetLineWidth(2.f);
+        ofDrawLine(glm::vec3(t.x, t.y, 0.f), glm::vec3(t.x, t.y, 0.3f));
+        ofNoFill();
+        ofPushMatrix();
+        ofTranslate(t.x, t.y, 0.003f);
+        ofDrawCircle(0.f, 0.f, 0.15f);        // the radius within which it counts as arrived
+        ofPopMatrix();
+        ofFill();
+        ofSetLineWidth(1.f);
     }
     if (_showKinematics) drawKinematics();
     _cam.end();
@@ -211,28 +236,35 @@ void ofApp::draw() {
     const glm::dvec3 vb = _duck.velocityBody();
     const double tilt = std::acos(std::min(1.0, std::max(-1.0, _duck.uprightness()))) * 180.0 / 3.14159265358979;
     ofSetColor(255);
-    std::string s = "microduck: MuJoCo physics, ofxOnnx policy, ofxRobot limbs\n";
-    s += "command  forward " + ofToString(_duck.command().x, 2) + " m/s   sideways " + ofToString(_duck.command().y, 2) +
+    const bool run = _duck.skill() == Microduck::Run;
+    std::string s = std::string("microduck: MuJoCo physics, ofxOnnx policy, ofxRobot limbs     policy: ") + Microduck::skillName(_duck.skill()) +
+                    (_duck.hasSkill(Microduck::Run) ? "  (1 walk, 2 run)" : "") + "\n";
+    if (run) s += "target  " + ofToString(_duck.targetDistance(), 2) + " m away (hold the arrow keys to move it)\n";
+    else s += "command  forward " + ofToString(_duck.command().x, 2) + " m/s   sideways " + ofToString(_duck.command().y, 2) +
          " m/s   turn " + ofToString(_duck.command().z, 2) + " rad/s (given to the policy: " + ofToString(_duck.appliedCommand().z, 2) + ", heading held)\n";
     s += "walking  forward " + ofToString(vb.x, 2) + " m/s   sideways " + ofToString(vb.y, 2) + " m/s   tilt " +
          ofToString(tilt, 1) + " deg   sim " + ofToString(_duck.simTime(), 1) + " s (" + ofToString(_realtime, 2) + "x real time)\n";
     s += "policy " + ofToString(_duck.policyMicros(), 0) + " us/step   ofxRobot FK vs simulation: " +
          ofToString(_duck.maxFkErrorMm(), 2) + " mm   safety gate: " +
          (_duck.faulted() ? "FAULT " + _duck.faultReason() + " (f clears)" : std::string("ok")) + "\n";
-    s += "up/down walk, left/right turn, , . sideways, space stop, x shove, r reset, p pause, k kinematics, g collision, f clear fault";
+    s += run ? "up/down/left/right move the target, space target 2.5 m ahead, 1 walk, x shove, r reset, p pause, k kinematics, g collision, f clear fault"
+             : "up/down walk, left/right turn, , . sideways, space stop, 2 run, x shove, r reset, p pause, k kinematics, g collision, f clear fault";
     ofDrawBitmapString(s, 12, 20);
 }
 
 void ofApp::keyPressed(int key) {
     std::lock_guard<std::mutex> lock(_duck.mutex);
+    const bool walk = _duck.skill() == Microduck::Walk;
     switch (key) {
-        case OF_KEY_UP:    _vx += 0.1f; break;
-        case OF_KEY_DOWN:  _vx -= 0.1f; break;
-        case OF_KEY_LEFT:  _wz += 0.25f; break;
-        case OF_KEY_RIGHT: _wz -= 0.25f; break;
+        case '1': _duck.setSkill(Microduck::Walk); break;
+        case '2': _duck.setSkill(Microduck::Run); break;
+        case OF_KEY_UP:    if (walk) _vx += 0.1f; break;      // (with the run policy the held arrows move the target: see update)
+        case OF_KEY_DOWN:  if (walk) _vx -= 0.1f; break;
+        case OF_KEY_LEFT:  if (walk) _wz += 0.25f; break;
+        case OF_KEY_RIGHT: if (walk) _wz -= 0.25f; break;
         case ',': _vy += 0.05f; break;
         case '.': _vy -= 0.05f; break;
-        case ' ': _vx = _vy = _wz = 0.f; break;
+        case ' ': if (walk) _vx = _vy = _wz = 0.f; else _duck.placeTarget(2.5, 0.0); break;
         case 'x': _duck.push(0.f, 0.25f); break;
         case 'r': _duck.reset(); _trail.clear(); break;
         case 'p': _duck.paused = !_duck.paused; break;
