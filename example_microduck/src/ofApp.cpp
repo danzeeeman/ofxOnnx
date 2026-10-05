@@ -9,8 +9,8 @@ void ofApp::setup() {
     if (_startRun) _duck.setSkill(Microduck::Run);
     _duck.setSpawn(0.0, 0.0, 0.0);
     _duck.reset();
-    if (_chain) {   // four followers in a line behind it, each following the one ahead
-        for (int i = 0; i < 4; ++i) {
+    if (_chain) {   // the followers in a line behind it, each following the one ahead
+        for (int i = 0; i < _followerCount; ++i) {
             auto f = std::make_unique<Microduck>();
             if (!f->setup("microduck", 1u << Microduck::Follow)) { ofLogError("ofApp") << "follower setup failed"; ofExit(1); return; }
             f->setSpawn(-0.8 * (i + 1), 0.0, 0.0);
@@ -118,7 +118,7 @@ void ofApp::exit() {
     _duck.stopThread();
 }
 
-// The chain, without a window: the first robot walks forward at 0.3 m/s and each of the four others follows the one ahead.
+// The chain, without a window: the first robot walks forward at 0.3 m/s and each of the others follows the one ahead.
 // Passes when all five stay up and every follower ends up within 1.2 m of the robot it follows (it was started 0.8 m behind
 // it, and the policy keeps 0.6 m).
 void ofApp::runChainCheck() {
