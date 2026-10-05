@@ -1,7 +1,7 @@
 """Make the data the microduck example loads, from the robot's URDF and its trained walking policy (the Walk skill of
 Isaac Lab's microduck_skills task: Isaac-Skill-Walk-Microduck).
 
-    python make_microduck.py <microduck.urdf> <assets_parent_dir> <walker.onnx> <out_data_dir> [<runner.onnx>]
+    python make_microduck.py <microduck.urdf> <assets_parent_dir> <walker.onnx> <out_data_dir> [<runner.onnx> [<follower.onnx>]]
 
 Needs `pip install mujoco==3.13.0 onnx` (the version of the MuJoCo library in ofxRobot/libs/mujoco: a model written by a
 newer MuJoCo can use attributes an older one rejects).
@@ -17,6 +17,7 @@ Writes into <out_data_dir>/microduck/:
                      ofxRobot joint descriptors (RobotKinematics): one serial chain each, from the trunk
   microduck.json     what the code needs to know: joint order, default pose, action scales, gains, timing
   walker.onnx        the Walk policy, weights embedded (one file)
+  follower.onnx      the Follow policy (Isaac-Skill-Follow-Microduck), if given: the leader robot is the target
   runner.onnx        the Run policy (Isaac-Skill-Run-Microduck), if given: the same inputs, a target on the floor in place of a velocity
 
 The order of joints matters and is not written down anywhere in the training setup: the policy's 14 inputs and 14
@@ -29,6 +30,7 @@ import mujoco
 
 urdf_path, assets_parent, policy, out_data = sys.argv[1:5]
 runner = sys.argv[5] if len(sys.argv) > 5 else None
+follower = sys.argv[6] if len(sys.argv) > 6 else None
 out = os.path.join(out_data, "microduck")
 os.makedirs(os.path.join(out, "assets"), exist_ok=True)
 
@@ -52,7 +54,7 @@ IMU_HEAD = ("jaw_soft", (0.0152, 0.0001, -0.0511))
 # the 8x8 time-of-flight sensor on the trunk: position, pitch up (degrees), field of view, range
 TOF = {"body": "trunk_base", "pos": [0.037, 0.0, 0.02], "pitch_up_deg": 15.0, "fov_deg": 60.0, "zones": 8,
        "max_distance": 1.5, "min_distance": 0.03}
-SKILLS = ["sit", "stand", "walk", "run", "kick", "look"]   # the one-hot skill command; this policy is "walk"
+SKILLS = ["waddle", "stand", "walk", "run", "follow", "look"]   # the one-hot skill command (microduck_skills.mdp.terms.SKILLS)
 COMMAND_RANGE = {"vx": [-0.2, 0.4], "vy": [-0.2, 0.2], "wz": [-1.0, 1.0]}
 LEG_JOINTS = ["hip_yaw", "hip_roll", "hip_pitch", "knee", "ankle"]
 HEAD_JOINTS = ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
@@ -188,7 +190,8 @@ meta = {
                     "joint_vel(14)", "last_action(14)", "head IMU gyro(3)", "head IMU accelerometer * 0.1 (3)",
                     "head gravity(3, in the jaw_soft frame)", "time-of-flight 8x8 (64, distance / max, v-major)",
                     "skill one-hot(6)", "velocity_command(3: vx vy wz)", "target(3, zeros for walk)"],
-    "policies": {"walk": {"file": "walker.onnx", "skill": SKILLS.index("walk")}, **({"run": {"file": "runner.onnx", "skill": SKILLS.index("run")}} if runner else {})},
+    "policies": {"walk": {"file": "walker.onnx", "skill": SKILLS.index("walk")}, **({"run": {"file": "runner.onnx", "skill": SKILLS.index("run")}} if runner else {}),
+                 **({"follow": {"file": "follower.onnx", "skill": SKILLS.index("follow")}} if follower else {})},
     "sensors": {"body_acc": "imu_body_acc", "body_gyro": "imu_body_gyro", "head_acc": "imu_head_acc", "head_gyro": "imu_head_gyro"},
     "head_body": "jaw_soft", "tof": TOF, "num_skills": len(SKILLS), "obs_dim": 136,
     "limbs": {"left_leg": "left_leg.joints.json", "right_leg": "right_leg.joints.json", "head": "head.joints.json"},
@@ -204,6 +207,9 @@ print("walker.onnx: %d bytes, weights embedded" % os.path.getsize(os.path.join(o
 if runner:
     onnx.save(onnx.load(runner), os.path.join(out, "runner.onnx"), save_as_external_data=False)
     print("runner.onnx: %d bytes, weights embedded" % os.path.getsize(os.path.join(out, "runner.onnx")))
+if follower:
+    onnx.save(onnx.load(follower), os.path.join(out, "follower.onnx"), save_as_external_data=False)
+    print("follower.onnx: %d bytes, weights embedded" % os.path.getsize(os.path.join(out, "follower.onnx")))
 print("wrote", out)
 print("joint order:", order)
 print("action order:", leg_order + head_order)

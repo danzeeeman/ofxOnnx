@@ -6,6 +6,7 @@ int main(int argc, char** argv) {
     // went, and exit 0 (it walked and stayed up) or 1.
     bool check = false;
     double seconds = 10.0;
+    bool solo = false;          // --solo: one robot, no followers
     bool run = false;           // --run: the Run policy
     bool threaded = false;      // --threads: with --check, run the two threads in real time instead of stepping in a loop
     for (int i = 1; i < argc; ++i) {
@@ -15,11 +16,12 @@ int main(int argc, char** argv) {
         }
         if (std::string(argv[i]) == "--threads") threaded = true;
         if (std::string(argv[i]) == "--run") run = true;
+        if (std::string(argv[i]) == "--solo") solo = true;
     }
 
     ofGLWindowSettings settings;
     settings.setSize(1280, 800);
     settings.setGLVersion(3, 2);
     ofCreateWindow(settings);
-    return ofRunApp(new ofApp(check, seconds, threaded, run));
+    return ofRunApp(new ofApp(check, seconds, threaded, run, !solo));
 }
