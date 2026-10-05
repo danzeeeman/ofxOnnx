@@ -57,8 +57,15 @@ void ofApp::runCheck() {
     for (const auto& l : _duck.limbs()) fkAtRest[l.name] = glm::length(_duck.toolFk(l) - _duck.toolSim(l)) * 1000.0;
     int steps = 0;
     const int total = (int)(_checkSeconds / 0.02);
+    if (_threaded) _duck.startThread();
     for (; steps < total; ++steps) {
-        _duck.policyStep();
+        std::unique_lock<std::mutex> lock(_duck.mutex, std::defer_lock);
+        if (_threaded) {   // real time: sample the robot every 20 ms of wall time
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            lock.lock();
+        } else {
+            _duck.policyStep();
+        }
         worstUp = std::min(worstUp, _duck.uprightness());
         worstFk = std::max(worstFk, _duck.maxFkErrorMm());
         for (const auto& l : _duck.limbs()) fkWorst[l.name] = std::max(fkWorst[l.name], glm::length(_duck.toolFk(l) - _duck.toolSim(l)) * 1000.0);
@@ -72,6 +79,7 @@ void ofApp::runCheck() {
         }
         if (_duck.faulted() || _duck.uprightness() < 0.5 || _duck.trunkPos().z < 0.05) break;
     }
+    if (_threaded) _duck.stopThread();
     const double forward = glm::dot(_duck.trunkPos() - start, heading);
     const bool up = steps == total;
     const bool ok = up && forward > 0.5 * 0.3 * _checkSeconds && worstFk < 0.01 && !_duck.faulted();

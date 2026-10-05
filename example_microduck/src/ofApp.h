@@ -17,10 +17,11 @@
 //   f                 clear a safety-gate fault
 //   drag, wheel       orbit / zoom the camera (it follows the robot)
 //
-// Command line: --check [seconds] walks forward for that long without drawing anything and exits 0 or 1.
+// Command line: --check [seconds] walks forward for that long without drawing anything and exits 0 or 1;
+// --check --threads does it in real time on the physics and inference threads.
 class ofApp : public ofBaseApp {
 public:
-    ofApp(bool check = false, double checkSeconds = 10.0) : _check(check), _checkSeconds(checkSeconds) {}
+    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false) : _check(check), _checkSeconds(checkSeconds), _threaded(threaded) {}
 
     void setup() override;
     void update() override;
@@ -35,6 +36,7 @@ private:
 
     bool _check = false;
     double _checkSeconds = 10.0;
+    bool _threaded = false;
 
     Microduck _duck;
     std::vector<ofVboMesh> _meshes;      // every mesh in the model, in the model's own frame
