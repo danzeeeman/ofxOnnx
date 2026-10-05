@@ -74,6 +74,18 @@ public:
     // One policy step: observe, ask the policy, send the targets, step the physics.
     void policyStep();
 
+    // The two policies it can run, one at a time: Walk follows the velocity command; Run runs to a target on the floor and
+    // stops there (the target is a point in the world, given to the policy in the robot's own frame).
+    enum Skill { Walk = 0, Run = 1 };
+    void setSkill(Skill s);
+    Skill skill() const { return _skill; }
+    bool hasSkill(Skill s) const { return _hasSkill[s]; }
+    static const char* skillName(Skill s) { return s == Walk ? "walk" : "run"; }
+    glm::dvec3 target() const { return _target; }
+    void placeTarget(double ahead, double left);           // relative to the robot's heading, on the floor
+    void nudgeTarget(double ahead, double left);           // the same, added to where it is now
+    double targetDistance() const;                         // along the floor, from the trunk
+
     // A shove, in m/s sideways, to see it recover.
     void push(float vx, float vy);
 
@@ -103,7 +115,7 @@ public:
 private:
     void observe();                             // the heading controller and the observation
     void actuateAndStep(bool actionOk);         // the targets from _act through ofxRobot's gate to the servos, then four physics steps
-    bool infer(const std::vector<float>& obs, std::vector<float>& act);   // the policy; one thread at a time
+    bool infer(const std::vector<float>& obs, std::vector<float>& act, Skill skill);   // the policy; one thread at a time
     void physicsLoop();
     void inferenceLoop();
     void buildObservation();
@@ -114,12 +126,16 @@ private:
     // The sensors of the real robot that the policy reads: two IMUs (sensor addresses into mjData::sensordata), the head's
     // body, and the time-of-flight sensor (a grid of rays out of the trunk).
     int _accBody = -1, _gyroBody = -1, _accHead = -1, _gyroHead = -1, _headBody = -1;
-    int _skill = 0, _numSkills = 6;
+    int _numSkills = 6;
     struct Tof { glm::dvec3 pos{0.037, 0.0, 0.02}; double pitchUp = 15.0, fov = 60.0, maxDistance = 1.5, minDistance = 0.03; int zones = 8; } _tof;
     std::vector<glm::dvec3> _tofDirs;           // the rays, in the trunk frame, v-major like Isaac Lab's lidar pattern
     double _eyeHeight = 0.0;                    // eye level above the trunk origin in the default pose
 
-    ofxOnnx _onnx;
+    ofxOnnx _onnx[2];                           // one per skill
+    bool _hasSkill[2] = {false, false};
+    int _skillIndex[2] = {2, 3};                // its slot in the observation's skill one-hot
+    Skill _skill = Walk, _obsSkill = Walk, _mailSkill = Walk;
+    glm::dvec3 _target{0.0};
     std::vector<float> _obs, _act, _last;       // 136 in, 14 out, and the last action (an input)
     std::atomic<double> _policyMicros{0.0};
 

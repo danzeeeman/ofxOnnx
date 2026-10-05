@@ -1,7 +1,7 @@
 """Make the data the microduck example loads, from the robot's URDF and its trained walking policy (the Walk skill of
 Isaac Lab's microduck_skills task: Isaac-Skill-Walk-Microduck).
 
-    python make_microduck.py <microduck.urdf> <assets_parent_dir> <walker.onnx> <out_data_dir>
+    python make_microduck.py <microduck.urdf> <assets_parent_dir> <walker.onnx> <out_data_dir> [<runner.onnx>]
 
 Needs `pip install mujoco==3.13.0 onnx` (the version of the MuJoCo library in ofxRobot/libs/mujoco: a model written by a
 newer MuJoCo can use attributes an older one rejects).
@@ -16,7 +16,8 @@ Writes into <out_data_dir>/microduck/:
   left_leg.joints.json, right_leg.joints.json, head.joints.json
                      ofxRobot joint descriptors (RobotKinematics): one serial chain each, from the trunk
   microduck.json     what the code needs to know: joint order, default pose, action scales, gains, timing
-  walker.onnx        the policy, weights embedded (one file)
+  walker.onnx        the Walk policy, weights embedded (one file)
+  runner.onnx        the Run policy (Isaac-Skill-Run-Microduck), if given: the same inputs, a target on the floor in place of a velocity
 
 The order of joints matters and is not written down anywhere in the training setup: the policy's 14 inputs and 14
 outputs follow Isaac Lab's articulation order, which for this robot turns out to be the URDF's own depth-first
@@ -27,6 +28,7 @@ import xml.etree.ElementTree as ET
 import mujoco
 
 urdf_path, assets_parent, policy, out_data = sys.argv[1:5]
+runner = sys.argv[5] if len(sys.argv) > 5 else None
 out = os.path.join(out_data, "microduck")
 os.makedirs(os.path.join(out, "assets"), exist_ok=True)
 
@@ -186,8 +188,9 @@ meta = {
                     "joint_vel(14)", "last_action(14)", "head IMU gyro(3)", "head IMU accelerometer * 0.1 (3)",
                     "head gravity(3, in the jaw_soft frame)", "time-of-flight 8x8 (64, distance / max, v-major)",
                     "skill one-hot(6)", "velocity_command(3: vx vy wz)", "target(3, zeros for walk)"],
+    "policies": {"walk": {"file": "walker.onnx", "skill": SKILLS.index("walk")}, **({"run": {"file": "runner.onnx", "skill": SKILLS.index("run")}} if runner else {})},
     "sensors": {"body_acc": "imu_body_acc", "body_gyro": "imu_body_gyro", "head_acc": "imu_head_acc", "head_gyro": "imu_head_gyro"},
-    "head_body": "jaw_soft", "tof": TOF, "skill": SKILLS.index("walk"), "num_skills": len(SKILLS), "obs_dim": 136,
+    "head_body": "jaw_soft", "tof": TOF, "num_skills": len(SKILLS), "obs_dim": 136,
     "limbs": {"left_leg": "left_leg.joints.json", "right_leg": "right_leg.joints.json", "head": "head.joints.json"},
 }
 json.dump(meta, open(os.path.join(out, "microduck.json"), "w"), indent=2)
@@ -198,6 +201,9 @@ import onnx
 m = onnx.load(policy)                       # reads the sidecar from the same folder
 onnx.save(m, os.path.join(out, "walker.onnx"), save_as_external_data=False)
 print("walker.onnx: %d bytes, weights embedded" % os.path.getsize(os.path.join(out, "walker.onnx")))
+if runner:
+    onnx.save(onnx.load(runner), os.path.join(out, "runner.onnx"), save_as_external_data=False)
+    print("runner.onnx: %d bytes, weights embedded" % os.path.getsize(os.path.join(out, "runner.onnx")))
 print("wrote", out)
 print("joint order:", order)
 print("action order:", leg_order + head_order)

@@ -98,6 +98,16 @@
     "velocity_command(3: vx vy wz)",
     "target(3, zeros for walk)"
   ],
+  "policies": {
+    "walk": {
+      "file": "walker.onnx",
+      "skill": 2
+    },
+    "run": {
+      "file": "runner.onnx",
+      "skill": 3
+    }
+  },
   "sensors": {
     "body_acc": "imu_body_acc",
     "body_gyro": "imu_body_gyro",
@@ -118,7 +128,6 @@
     "max_distance": 1.5,
     "min_distance": 0.03
   },
-  "skill": 2,
   "num_skills": 6,
   "obs_dim": 136,
   "limbs": {
