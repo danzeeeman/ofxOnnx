@@ -29,9 +29,14 @@ onnx.runFloat(in, out);                  // one float vector in, one out: polici
 ```
 `run(...)` and the tensor helpers are there for models with several inputs or outputs, or other types.
 
-## Example
+## Examples
 `example_inference` loads a small demo model, checks that its output matches Python's onnxruntime number for number,
 and times it. `example_inference.exe --check` prints PASS/FAIL and exits 0/1.
+
+`example_microduck` makes a biped walk with a trained policy: MuJoCo (vendored in `ofxRobot/libs/mujoco`) simulates it,
+ofxOnnx runs the policy on its own thread at 50 Hz, and ofxRobot describes the limbs, checks their forward kinematics against
+the simulation and gates the joint targets. It needs ofxRobot next to this addon. Keys steer it; `--check` runs it headless
+and exits 0/1. See `example_microduck/README.md`.
 
 ## Linux
 ### CUDA
