@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <random>
 #include <thread>
 
 // The microduck biped, walking: three libraries doing three jobs.
@@ -84,6 +85,7 @@ public:
     enum Skill { Walk = 0, Run = 1, Follow = 2 };
     void follow(const Microduck* leader) { _leader = leader; setSkill(Follow); }
     const Microduck* leader() const { return _leader; }
+    bool trackingLost() const { return _camLost; }          // Follow: the head camera has not seen the leader for over a second
     glm::dvec3 publishedPos() const;                        // the trunk position as of the last step; safe from another robot's thread
     void setSkill(Skill s);
     Skill skill() const { return _skill; }
@@ -145,6 +147,14 @@ private:
     int _skillIndex[3] = {2, 3, 4};                // its slot in the observation's skill one-hot
     Skill _skill = Walk, _obsSkill = Walk, _mailSkill = Walk;
     glm::dvec3 _target{0.0};
+    // The Follow policy is not given the leader's position but what a camera on the head would measure of it (training:
+    // CameraTarget): seen only inside the camera's field of view and range, with noise and dropped frames, the last
+    // estimate held for a second in the frame it was measured in, then zeros ("not seen").
+    glm::dvec3 cameraTarget(const glm::dvec3& targetWorld);
+    glm::dvec3 _camLast{0.0};
+    double _camAge = 1.0e6;
+    std::atomic<bool> _camLost{true};
+    std::mt19937 _rng{12345};
     glm::dvec3 _spawn{0.0};
     double _spawnYaw = 0.0;
     const Microduck* _leader = nullptr;

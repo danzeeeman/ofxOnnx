@@ -22,7 +22,7 @@ bin\example_microduck.exe --check 10 --threads   the same, in real time on the p
 bin\example_microduck.exe --check 15 --run       the Run policy: run to a target 3 m ahead, stop within 0.4 m of it
 ```
 
-Four more microducks run the **Follow** policy (`Isaac-Skill-Follow-Microduck`) as a chain: the first keeps about 0.6 m behind the one you drive, the second behind the first, and so on, each facing the one ahead of it. They are separate MuJoCo worlds in one coordinate frame, so they do not collide with each other (they can walk through one another), each has its own physics and inference threads, and each reads the position of the robot it follows. `1` / `2` switch the robot you drive between the Walk and the Run policy (the followers keep following it).
+Four more microducks run the **Follow** policy (`Isaac-Skill-Follow-Microduck`) as a chain: the first keeps about 0.6 m behind the one you drive, the second behind the first, and so on, each facing the one ahead of it. They are separate MuJoCo worlds in one coordinate frame, so they do not collide with each other (they can walk through one another), each has its own physics and inference threads, and each "sees" the robot it follows through that simulated camera; the HUD marks a follower `(lost)` while it has not seen the robot ahead for over a second. `1` / `2` switch the robot you drive between the Walk and the Run policy (the followers keep following it).
 Walk: `up/down` walk, `left/right` turn, `, .` step sideways, `space` stops. Run: an orange marker on the floor is the target; hold `up/down/left/right` to move it away from, toward, or to either side of the robot (relative to the way it faces), and `space` puts it 2.5 m ahead again. It runs there, stops, and turns to look at it. `x` shoves it, `r` resets, `p` pauses, `k` shows ofxRobot's kinematics
 (each limb's joints, and the foot where its forward kinematics puts it, yellow, next to where MuJoCo has it, red: they coincide),
 `g` shows the collision geometry, `f` clears a safety-gate fault.
@@ -39,7 +39,7 @@ the MuJoCo version vendored in ofxRobot: a model written by a newer one can use 
   robot geometry that does not collide with itself, and a floor: the physics the policy was trained with
 - `left_leg / right_leg / head .joints.json`: ofxRobot descriptors
 - `microduck.json`: joint order, default pose, action scales, gains, timing
-- `follower.onnx`: the Follow policy: the same 136 inputs, velocity zero, the target the followed robot's position (a head height up) in the follower's frame
+- `follower.onnx`: the Follow policy (run `2026-10-05_07-18-23`): the same 136 inputs, velocity zero, and the target is what a camera on the follower's head would measure of the robot ahead (training's `CameraTarget`): seen only inside a 90 x 60 degree view and 3 m, with 3 % range noise and 1 degree angle noise, 5 % dropped frames, the last estimate held for 1 s in the frame it was measured in, then zeros ("not seen"). So the follower has to keep its head on the leader, and the gaps wander between 0.3 and 1 m instead of holding 0.6
 - `runner.onnx`: the Run policy (`Isaac-Skill-Run-Microduck`): the same 136 inputs, with the velocity command zero and the target given as a point on the floor (0.1 m up) in the robot's frame
 - `walker.onnx`: the Walk policy, with its weights folded into the one file (PyTorch's exporter writes them to a `.onnx.data` file whose name is recorded
   *inside* the model, so renaming the pair breaks loading)

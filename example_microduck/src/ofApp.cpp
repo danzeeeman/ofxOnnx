@@ -314,7 +314,7 @@ void ofApp::draw() {
          ofToString(tilt, 1) + " deg   sim " + ofToString(_duck.simTime(), 1) + " s (" + ofToString(_realtime, 2) + "x real time)\n";
     if (!_followers.empty()) {
         s += "followers, each behind the one ahead (m): ";
-        for (auto& f : _followers) s += ofToString(f->targetDistance(), 2) + "  ";
+        for (auto& f : _followers) s += ofToString(f->targetDistance(), 2) + (f->trackingLost() ? "(lost)  " : "  ");
         s += "\n";
     }
     s += "policy " + ofToString(_duck.policyMicros(), 0) + " us/step   ofxRobot FK vs simulation: " +

@@ -233,6 +233,9 @@ void Microduck::reset() {
     mj_forward(_m, _d);
     _headingTarget = heading();
     placeTarget(2.5, 0.0);
+    _camLast = glm::dvec3(0.0);
+    _camAge = 1.0e6;
+    _camLost = true;
     publishPose();
     {   // eye level: the head camera (jaw_soft body, offset in its frame) in the default pose, above the trunk
         const int head = mj_name2id(_m, mjOBJ_BODY, "jaw_soft");
@@ -324,8 +327,40 @@ void Microduck::buildObservation() {
     for (int i = 0; i < _numSkills; ++i) _obs[k++] = i == _skillIndex[_obsSkill] ? 1.f : 0.f;   // the skill command
     for (int i = 0; i < 3; ++i) _obs[k++] = _applied[i];                          // velocity_command: vx, vy, wz (zeros for run)
     if (_obsSkill == Run) put(Rt * (_target - trunkPos()));                       // target: the point on the floor, in the trunk frame
-    else if (_obsSkill == Follow && _leader) put(Rt * (_leader->publishedPos() + glm::dvec3(0.0, 0.0, 0.1) - trunkPos()));   // the leader, a head height up
+    else if (_obsSkill == Follow && _leader) put(cameraTarget(_leader->publishedPos() + glm::dvec3(0.0, 0.0, 0.1)));       // the leader, as the head camera sees it
     else for (int i = 0; i < 3; ++i) _obs[k++] = 0.f;                             // zeros: the walk skill has none
+}
+
+glm::dvec3 Microduck::cameraTarget(const glm::dvec3& targetWorld) {
+    // The camera: on the head body (jaw_soft) at the head_camera frame of the URDF, which is the head frame turned +90 degrees
+    // about y: forward is -z of the head body, left is y, up is x. 90 x 60 degrees of view, 3 m of range.
+    const double* Rh = _d->xmat + 9 * _headBody;
+    auto headAxis = [&](double x, double y, double z) {      // a direction in the head body's frame, in the world
+        return glm::dvec3(Rh[0] * x + Rh[1] * y + Rh[2] * z, Rh[3] * x + Rh[4] * y + Rh[5] * z, Rh[6] * x + Rh[7] * y + Rh[8] * z);
+    };
+    const glm::dvec3 forward = headAxis(0, 0, -1), left = headAxis(0, 1, 0), up = headAxis(1, 0, 0);
+    const glm::dvec3 eye = col3(_d->xpos + 3 * _headBody) + headAxis(0.0155, 0.0, -0.0733);
+    const glm::dvec3 to = targetWorld - eye;
+    const double distance = std::max(glm::length(to), 1e-6);
+    const double x = glm::dot(to, forward), y = glm::dot(to, left), z = glm::dot(to, up);
+    const double bearing = std::atan2(y, x), elevation = std::atan2(z, std::hypot(x, y));
+    const double rad = 3.14159265358979 / 180.0;
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    std::normal_distribution<double> gauss(0.0, 1.0);
+    bool seen = x > 0.0 && std::fabs(bearing) < 45.0 * rad && std::fabs(elevation) < 30.0 * rad && distance < 3.0;
+    seen = seen && uni(_rng) >= 0.05;                         // some frames miss the detection
+    if (seen) {                                               // what the camera measures: noise on the range, the bearing and the elevation
+        double d = distance * (1.0 + 0.03 * gauss(_rng));
+        d = std::max(d + 0.01 * gauss(_rng), 0.05);
+        const double b = bearing + 1.0 * rad * gauss(_rng), e = elevation + 1.0 * rad * gauss(_rng);
+        const glm::dvec3 measured = forward * (d * std::cos(e) * std::cos(b)) + left * (d * std::cos(e) * std::sin(b)) + up * (d * std::sin(e));
+        _camLast = glm::transpose(trunkRot()) * (eye + measured - trunkPos());   // kept in the trunk frame it was measured in: stale once the robot moves
+        _camAge = 0.0;
+    } else {
+        _camAge += _decimation * _simDt;
+    }
+    _camLost = _camAge >= 1.0;
+    return _camAge < 1.0 ? _camLast : glm::dvec3(0.0);       // zero means "not seen"
 }
 
 void Microduck::publishPose() {
