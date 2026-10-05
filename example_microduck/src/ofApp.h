@@ -43,7 +43,7 @@ private:
     ofPolyline _trail;
     glm::vec3 _focus{0.f};
 
-    float _vx = 0.2f, _vy = 0.f, _wz = 0.5f;   // it starts out walking a circle (0.4 m radius)
+    float _vx = 0.2f, _vy = 0.f, _wz = 0.f;   // it starts out walking straight
     bool _showKinematics = true, _showCollision = false;
     double _realtime = 1.0;
     double _lastWall = 0.0, _lastSim = 0.0;
