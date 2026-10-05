@@ -1,0 +1,136 @@
+{
+  "name": "microduck head",
+  "units": {
+    "length": "m",
+    "angle": "deg"
+  },
+  "upAxis": "Z",
+  "baseLink": "trunk_base",
+  "linkNames": [
+    "trunk_base",
+    "neck",
+    "neck_pitch_1",
+    "yaw_roll_motion",
+    "jaw_soft"
+  ],
+  "joints": [
+    {
+      "name": "neck_pitch",
+      "link": "neck",
+      "origin": [
+        0.026,
+        0.0145,
+        0.0324215
+      ],
+      "rot0_wxyz": [
+        0.500000002,
+        -0.5,
+        0.5,
+        -0.499999998
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -90.0,
+        60.0
+      ]
+    },
+    {
+      "name": "head_pitch",
+      "link": "neck_pitch_1",
+      "origin": [
+        0.0,
+        -0.05,
+        0.0
+      ],
+      "rot0_wxyz": [
+        1e-09,
+        0.707106781,
+        -1e-09,
+        -0.707106781
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -90.0,
+        90.0
+      ]
+    },
+    {
+      "name": "head_yaw",
+      "link": "yaw_roll_motion",
+      "origin": [
+        0.0,
+        0.0186931,
+        -0.0145
+      ],
+      "rot0_wxyz": [
+        -0.5,
+        -0.499999998,
+        -0.500000002,
+        -0.5
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -170.0,
+        170.0
+      ]
+    },
+    {
+      "name": "head_roll",
+      "link": "jaw_soft",
+      "origin": [
+        -0.0179,
+        0.0,
+        0.0145
+      ],
+      "rot0_wxyz": [
+        8.3e-08,
+        0.0,
+        -1.0,
+        -0.0
+      ],
+      "rot1_wxyz": [
+        0.707106781,
+        0.0,
+        -0.707106781,
+        0.0
+      ],
+      "limits_deg": [
+        -25.0,
+        25.0
+      ]
+    }
+  ],
+  "tool": {
+    "link": "mouth_tip",
+    "origin": [
+      -0.00809334,
+      3.08148791e-33,
+      -0.0777383
+    ],
+    "rpy": [
+      3.14159265,
+      1.56207067,
+      -3.14159265
+    ]
+  },
+  "notes": [
+    "Written by tools/make_microduck.py from microduck.urdf: one limb as a serial chain from the trunk.",
+    "Per joint: T(theta) = translate(origin) * R(rot0) * Rx(theta) * R(rot1)^-1",
+    "tool: the fixed frame after the last joint (the foot, or the mouth tip), in that joint's link frame."
+  ]
+}
