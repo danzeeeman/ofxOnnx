@@ -12,27 +12,81 @@ Microduck::~Microduck() {
 }
 
 void Microduck::startThread() {
-    if (_thread.joinable() || !_m) return;
+    if (_physicsThread.joinable() || !_m) return;
     _run = true;
-    _thread = std::thread([this] {
-        using clock = std::chrono::steady_clock;
-        auto last = clock::now();
-        while (_run) {
-            const auto now = clock::now();
-            const double dt = std::chrono::duration<double>(now - last).count();
-            last = now;
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                update(dt);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    });
+    _inferenceThread = std::thread([this] { inferenceLoop(); });
+    _physicsThread = std::thread([this] { physicsLoop(); });
 }
 
 void Microduck::stopThread() {
     _run = false;
-    if (_thread.joinable()) _thread.join();
+    _obsReady.notify_all();
+    _actReady.notify_all();
+    if (_physicsThread.joinable()) _physicsThread.join();
+    if (_inferenceThread.joinable()) _inferenceThread.join();
+}
+
+// The inference thread: wait for an observation, run the policy, hand the action back.
+void Microduck::inferenceLoop() {
+    std::vector<float> obs, act;
+    while (_run) {
+        long seq;
+        {
+            std::unique_lock<std::mutex> lock(_mail);
+            _obsReady.wait(lock, [&] { return !_run || _obsSeq != _inferSeq; });
+            if (!_run) return;
+            obs = _mailObs;
+            seq = _inferSeq = _obsSeq;
+        }
+        const bool ok = infer(obs, act);
+        {
+            std::lock_guard<std::mutex> lock(_mail);
+            _mailAct = act;
+            _mailOk = ok;
+            _actSeq = seq;
+        }
+        _actReady.notify_all();
+    }
+}
+
+// The physics thread: real time, one policy period (four 5 ms steps) at a time.
+void Microduck::physicsLoop() {
+    using clock = std::chrono::steady_clock;
+    const double period = _decimation * _simDt;
+    auto last = clock::now();
+    double accum = 0.0;
+    while (_run) {
+        const auto now = clock::now();
+        accum += std::min(std::chrono::duration<double>(now - last).count(), 0.1);   // after a long stall, do not try to catch up all of it
+        last = now;
+        while (accum >= period && _run) {
+            accum -= period;
+            if (paused) continue;
+            long seq = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                observe();
+                if (!_faulted) {
+                    std::lock_guard<std::mutex> mail(_mail);
+                    _mailObs = _obs;
+                    seq = ++_obsSeq;
+                }
+            }
+            bool ok = true;
+            if (seq) {
+                _obsReady.notify_all();
+                std::unique_lock<std::mutex> lock(_mail);
+                // the answer takes tens of microseconds; if it is late, this period keeps the last action
+                if (_actReady.wait_for(lock, std::chrono::milliseconds(3), [&] { return _actSeq == seq || !_run; }) && _actSeq == seq) {
+                    ok = _mailOk;
+                    if (ok) _act = _mailAct;
+                }
+            }
+            std::lock_guard<std::mutex> lock(mutex);
+            actuateAndStep(ok);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }
 
 bool Microduck::setup(const std::string& dir) {
@@ -265,28 +319,39 @@ glm::dvec3 Microduck::lookTarget() const {
                                    lookDistance * std::sin(yaw) + side * std::cos(yaw), _eyeHeight);
 }
 
+bool Microduck::infer(const std::vector<float>& obs, std::vector<float>& act) {
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool ok = _onnx.runFloat(obs, act) && act.size() == 14;
+    _policyMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+    return ok;
+}
+
+// One policy step, all on this thread (the headless check, and anything without the threads).
 void Microduck::policyStep() {
-    std::vector<float> targets = _defaultAct;               // rad; the default pose is what a faulted robot holds
+    observe();
+    bool ok = true;
+    if (!_faulted) ok = infer(_obs, _act);
+    actuateAndStep(ok);
+}
 
-    // The turn rate the policy is given: yours while you turn, otherwise whatever holds the heading.
-    {
-        const double yaw = heading();
-        _applied = _cmd;
-        if (std::fabs(_cmd.z) > 1e-3f) {
-            _headingTarget = yaw;
-        } else {
-            double err = _headingTarget - yaw;
-            err = std::atan2(std::sin(err), std::cos(err));             // wrapped to (-pi, pi]
-            _applied.z = glm::clamp(kHeadingStiffness * (float)err, _rangeZ.x, _rangeZ.y);
-        }
+// The turn rate the policy is given: yours while you turn, otherwise whatever holds the heading; then the observation.
+void Microduck::observe() {
+    const double yaw = heading();
+    _applied = _cmd;
+    if (std::fabs(_cmd.z) > 1e-3f) {
+        _headingTarget = yaw;
+    } else {
+        double err = _headingTarget - yaw;
+        err = std::atan2(std::sin(err), std::cos(err));             // wrapped to (-pi, pi]
+        _applied.z = glm::clamp(kHeadingStiffness * (float)err, _rangeZ.x, _rangeZ.y);
     }
+    if (!_faulted) buildObservation();
+}
 
+void Microduck::actuateAndStep(bool actionOk) {
+    std::vector<float> targets = _defaultAct;               // rad; the default pose is what a faulted robot holds
     if (!_faulted) {
-        buildObservation();
-        const auto t0 = std::chrono::steady_clock::now();
-        const bool ok = _onnx.runFloat(_obs, _act);
-        _policyMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
-        if (!ok || _act.size() != 14) {
+        if (!actionOk || _act.size() != 14) {
             _faulted = true; _faultReason = "the policy did not return 14 actions";
         } else {
             _last = _act;

@@ -6,6 +6,7 @@
 #include "RobotKinematics.h"       // ofxRobot: the limbs, loaded from JSON descriptors
 #include <mujoco/mujoco.h>         // ofxRobot/libs/mujoco
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 
@@ -37,9 +38,11 @@ public:
 
     ~Microduck();
 
-    // The simulation and the policy can run on their own thread, 50 Hz in real time, so inference never waits for a
-    // frame to be drawn (or the other way round). While it runs, hold `mutex` whenever you touch the robot from the
-    // main thread: to read its state or draw it, and to call setCommand / reset / push / clearFault / paused.
+    // Two threads: the physics (MuJoCo stepping in real time, 200 Hz, which owns the robot's state) and the inference (the
+    // policy, which waits for an observation and answers with 14 targets). Every 50 Hz period the physics thread hands the
+    // inference thread the observation and waits a moment for the answer, so the targets reach the servos as they did in
+    // training, while neither thread waits for a frame to be drawn. While they run, hold `mutex` whenever you touch the
+    // robot from the main thread: to read its state or draw it, and to call setCommand / reset / push / clearFault / paused.
     void startThread();
     void stopThread();
     std::mutex mutex;
@@ -98,8 +101,12 @@ public:
     bool paused = false;
 
 private:
+    void observe();                             // the heading controller and the observation
+    void actuateAndStep(bool actionOk);         // the targets from _act through ofxRobot's gate to the servos, then four physics steps
+    bool infer(const std::vector<float>& obs, std::vector<float>& act);   // the policy; one thread at a time
+    void physicsLoop();
+    void inferenceLoop();
     void buildObservation();
-    void applyTargets(const std::vector<float>& action);
 
     mjModel* _m = nullptr;
     mjData* _d = nullptr;
@@ -114,7 +121,7 @@ private:
 
     ofxOnnx _onnx;
     std::vector<float> _obs, _act, _last;       // 136 in, 14 out, and the last action (an input)
-    double _policyMicros = 0.0;
+    std::atomic<double> _policyMicros{0.0};
 
     // From microduck.json.
     std::vector<std::string> _jointOrder, _actionOrder;
@@ -131,8 +138,14 @@ private:
     static constexpr float kHeadingStiffness = 0.5f;   // 1/s, from the training configuration
     double _accum = 0.0;
 
-    std::thread _thread;
+    std::thread _physicsThread, _inferenceThread;
     std::atomic<bool> _run{false};
+    // The hand-off between them: the observation going over, the action coming back, each tagged with the period it is for.
+    std::mutex _mail;
+    std::condition_variable _obsReady, _actReady;
+    std::vector<float> _mailObs, _mailAct;
+    long _obsSeq = 0, _actSeq = 0, _inferSeq = 0;
+    bool _mailOk = false;
 
     std::vector<Limb> _limbs;
     bool _faulted = false;

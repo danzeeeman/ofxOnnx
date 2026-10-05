@@ -6,16 +6,18 @@ int main(int argc, char** argv) {
     // went, and exit 0 (it walked and stayed up) or 1.
     bool check = false;
     double seconds = 10.0;
+    bool threaded = false;      // --threads: with --check, run the two threads in real time instead of stepping in a loop
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--check") {
             check = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') seconds = std::atof(argv[++i]);
         }
+        if (std::string(argv[i]) == "--threads") threaded = true;
     }
 
     ofGLWindowSettings settings;
     settings.setSize(1280, 800);
     settings.setGLVersion(3, 2);
     ofCreateWindow(settings);
-    return ofRunApp(new ofApp(check, seconds));
+    return ofRunApp(new ofApp(check, seconds, threaded));
 }

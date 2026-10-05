@@ -17,6 +17,7 @@ Needs ofxRobot next to ofxOnnx (`addons/ofxRobot`) for its sources and its vendo
 build.bat                            (or open example_microduck.vcxproj)
 bin\example_microduck.exe            it starts walking straight; up/down/left/right to steer
 bin\example_microduck.exe --check 15 no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
+bin\example_microduck.exe --check 10 --threads   the same, in real time on the physics and inference threads
 ```
 
 `up/down` walk, `left/right` turn, `, .` step sideways, `space` stops, `x` shoves it, `r` resets, `p` pauses, `k` shows ofxRobot's kinematics
@@ -59,7 +60,7 @@ The network is a tiny MLP; the work is reproducing exactly what it saw in traini
 - **Heading hold.** The policy was trained with a heading command: its turn rate was computed from heading error (stiffness 0.5), never given by a
   joystick. Given a plain zero turn rate it veers (a 1.3 m circle here); with the same controller it walks straight.
 
-A red sphere 2 m ahead at eye level, swaying 5 cm left and right, shows where a look-at target would be. The simulation and policy run on their own thread at 50 Hz; the main thread takes `Microduck::mutex` to read or draw.
+A red sphere 2 m ahead at eye level, swaying 5 cm left and right, shows where a look-at target would be. Physics and inference run on their own threads: MuJoCo steps in real time (200 Hz) on one, and every 50 Hz period it hands the observation to the other, which runs the policy and answers, so the targets reach the servos as in training. The main thread takes `Microduck::mutex` to read or draw.
 
 The look-at sphere is only drawn: the Walk skill has no look-at input (the separate Look skill does).
 
