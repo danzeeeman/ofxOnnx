@@ -1,11 +1,21 @@
 
 #pragma once
 #include "ofMesh.h"
+#include "ofLog.h"
+#include "ofUtils.h"
+#include <algorithm>
+#include <array>
+#include <string>
+#include <thread>
+#include <vector>
 #include <onnxruntime/onnxruntime_cxx_api.h>
 
 // wrapper for onnx runtime.
 // https://onnxruntime.ai/docs/install/#inference-install-table-for-all-languages
 
+// Platforms: macOS and Linux (CPU, CUDA on Linux) and Windows x64 (CPU). The Windows libraries are in
+// libs/onnxruntime/lib/vs/x64 (onnxruntime.dll is copied next to the exe by the project generator).
+//
 // The GPU CUDA accelerated version on Linux is much faster.
 // Download the binary here: https://github.com/microsoft/onnxruntime/releases/tag/v1.24.4
 // Must have CUDA installed.
@@ -70,6 +80,14 @@ public:
 	std::string getOutputName(int aindex);
 	std::vector<int64_t> getOutputShape(int aindex);
 	std::vector<const char*> getOutputNames();
+
+	// One float vector in, one float vector out: an MLP policy, a classifier, a regressor. The input is given
+	// the model's own input shape with every dynamic dimension set to 1, so a model taking [batch, n] is run with
+	// batch 1. The result is copied into `output` (resized to fit). Meant for loops that run every frame or
+	// faster: the name tables are built once at load, so nothing is rebuilt per call.
+	// False (with a log line) if there is no session, the model does not have exactly one float input and one
+	// float output, or the input has the wrong number of values.
+	bool runFloat(const std::vector<float>& input, std::vector<float>& output);
 
 	void printMetaData();
 	void printInputs();
@@ -214,4 +232,7 @@ protected:
 	// create std::vector<const char *> without issues.
 	std::vector<std::string> mInputNames;
 	std::vector<std::string> mOutputNames;
+	// The same names as C strings, built once at load for runFloat().
+	std::vector<const char*> mInputNamePtrs;
+	std::vector<const char*> mOutputNamePtrs;
 };

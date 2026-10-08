@@ -22,3 +22,13 @@ linux64:
     ADDON_INCLUDES += libs/onnxruntime/include
     ADDON_CFLAGS += -I/usr/local/cuda/include
     ADDON_DEFINES += OFX_ONNX_USE_CUDA
+
+vs:
+	# Windows x64, CPU. onnxruntime.dll (and the providers shim it loads) are copied next to the exe.
+	ADDON_INCLUDES = src
+	ADDON_INCLUDES += libs/onnxruntime/include
+	ADDON_INCLUDES_EXCLUDE = libs/onnxruntime/include/cuda/
+	ADDON_INCLUDES_EXCLUDE += libs/onnxruntime/include/onnxruntime/core/providers/cuda
+	ADDON_LIBS = libs/onnxruntime/lib/vs/x64/onnxruntime.lib
+	ADDON_DLLS_TO_COPY = libs/onnxruntime/lib/vs/x64/onnxruntime.dll
+	ADDON_DLLS_TO_COPY += libs/onnxruntime/lib/vs/x64/onnxruntime_providers_shared.dll

@@ -143,9 +143,11 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 	mSettings.useCoreML = false;
 #endif
 	
-	// load the model directly
+	// load the model directly. ONNX Runtime wants a native path string: wchar_t on Windows, char elsewhere,
+	// which is what std::filesystem::path::c_str() returns on each.
+	const of::filesystem::path nativeModelPath(modelPath);
 	try {
-		mSession = Ort::Session(mEnv, modelPath.c_str(), session_options);
+		mSession = Ort::Session(mEnv, nativeModelPath.c_str(), session_options);
 	} catch (const Ort::Exception& e) {
 		std::cerr << "ONNX Runtime Error: " << e.what() << std::endl;
 		std::cerr << "Error Code: " << e.GetOrtErrorCode() << std::endl;
@@ -179,6 +181,11 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 	for( size_t i = 0; i < getOutputCount(); i++ ) {
 		mOutputNames[i] = getOutputName(i);
 	}
+	// C-string tables for runFloat(). Taken after the vectors are final: the strings must not move.
+	mInputNamePtrs.clear();
+	for( auto& s : mInputNames ) mInputNamePtrs.push_back(s.c_str());
+	mOutputNamePtrs.clear();
+	for( auto& s : mOutputNames ) mOutputNamePtrs.push_back(s.c_str());
 	
 	if( mSettings.bPrintModelInfo ) {
 		std::cout << "--- " << mSettings.envName << " ---" << std::endl;
@@ -217,6 +224,59 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 
 	// mInputBuffer.resize(size_t(mInputShape[0] * mInputShape[1] * mInputShape[2] * mInputShape[3]));
 
+	return true;
+}
+
+//--------------------------------------------------------------------
+bool ofxOnnx::runFloat(const std::vector<float>& input, std::vector<float>& output) {
+	if( !hasSession() ) {
+		ofLogError("ofxOnnx::runFloat") << "no session: load() a model first";
+		return false;
+	}
+	if( mInputNamePtrs.size() != 1 || mOutputNamePtrs.size() != 1 ) {
+		ofLogError("ofxOnnx::runFloat") << "needs a model with one input and one output, this one has "
+										<< mInputNamePtrs.size() << " and " << mOutputNamePtrs.size();
+		return false;
+	}
+	if( getInputElementType(0) != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ) {
+		ofLogError("ofxOnnx::runFloat") << "the input is not float32";
+		return false;
+	}
+
+	// The model's input shape, with dynamic dimensions (-1) taken as 1.
+	std::vector<int64_t> shape = getInputShape(0);
+	size_t expected = 1;
+	for( auto& d : shape ) {
+		if( d < 0 ) d = 1;
+		expected *= (size_t)d;
+	}
+	if( input.size() != expected ) {
+		ofLogError("ofxOnnx::runFloat") << "the model takes " << expected << " values, got " << input.size();
+		return false;
+	}
+
+	try {
+		// The tensor reads straight from `input` (it is only read; the API takes a non-const pointer).
+		Ort::Value in = Ort::Value::CreateTensor<float>(mCpuMem, const_cast<float*>(input.data()), input.size(),
+														shape.data(), shape.size());
+		std::vector<Ort::Value> out = mSession.Run(Ort::RunOptions{ nullptr },
+												   mInputNamePtrs.data(), &in, 1,
+												   mOutputNamePtrs.data(), 1);
+		if( out.empty() || !out[0].IsTensor() ) {
+			ofLogError("ofxOnnx::runFloat") << "the output is not a tensor";
+			return false;
+		}
+		const auto info = out[0].GetTensorTypeAndShapeInfo();
+		if( info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ) {
+			ofLogError("ofxOnnx::runFloat") << "the output is not float32";
+			return false;
+		}
+		const float* data = out[0].GetTensorData<float>();
+		output.assign(data, data + info.GetElementCount());
+	} catch( const Ort::Exception& e ) {
+		ofLogError("ofxOnnx::runFloat") << e.what();
+		return false;
+	}
 	return true;
 }
 
