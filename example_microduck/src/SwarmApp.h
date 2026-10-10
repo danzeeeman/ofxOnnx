@@ -2,7 +2,7 @@
 #include "ofMain.h"
 #include "Swarm.h"
 
-// Thirty microducks walking around a 4 m square arena, among obstacles, all in one MuJoCo world, all running the same trained policy (the
+// Sixteen microducks walking around a 4 m square arena, among obstacles, all in one MuJoCo world, all running the same trained policy (the
 // NavigateWalkEnclosed one), each seeing the others and the walls with its time-of-flight sensor. See Swarm.h.
 //
 //   r                 reset: scatter them again
