@@ -1,6 +1,6 @@
 """Make the shared world of the swarm: N microducks in one MuJoCo model, inside a walled arena.
 
-    python make_swarm.py <data_dir> <navigator.onnx> [ducks=12] [half_side=2.0] [obstacles=20]
+    python make_swarm.py <data_dir> <navigator.onnx> [ducks=16] [half_side=2.0] [obstacles=20]
 
 Needs `pip install onnx` (for the policy) and reads <data_dir>/microduck/microduck.xml, which make_microduck.py wrote.
 Writes next to it:
@@ -17,7 +17,7 @@ import copy, os, sys
 import xml.etree.ElementTree as ET
 
 data_dir, policy = sys.argv[1:3]
-n = int(sys.argv[3]) if len(sys.argv) > 3 else 12
+n = int(sys.argv[3]) if len(sys.argv) > 3 else 16
 half = float(sys.argv[4]) if len(sys.argv) > 4 else 2.0
 num_obstacles = int(sys.argv[5]) if len(sys.argv) > 5 else 20
 folder = os.path.join(data_dir, "microduck")

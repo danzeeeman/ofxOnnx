@@ -20,7 +20,7 @@ bin\example_microduck.exe --check 30 no window needed: the walker and the follow
 bin\example_microduck.exe --check 15 --solo no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
 bin\example_microduck.exe --check 10 --threads   the same, in real time on the physics and inference threads
 bin\example_microduck.exe --check 15 --run       the Run policy: run to a target 3 m ahead, stop within 0.4 m of it
-bin\example_microduck.exe --swarm       thirty ducks in one walled arena among obstacles, avoiding each other (see "The swarm")
+bin\example_microduck.exe --swarm       sixteen ducks in one walled arena among obstacles, avoiding each other (see "The swarm")
 bin\example_microduck.exe --swarm --check 30   the swarm without a window, for 30 simulated seconds
 bin\example_microduck.exe --simplify     draw reduced meshes (about 45k triangles in all instead of ~800k per robot), for a weaker GPU
 ```
@@ -35,7 +35,7 @@ simulation to 0.01 mm. On the data here: upright for the whole run, 0.31-0.35 m/
 
 ## The swarm
 
-`--swarm` puts **thirty** microducks in one MuJoCo world, a 4 m square arena closed by 0.3 m walls, with **twenty obstacles** in it (eight
+`--swarm` puts **sixteen** microducks in one MuJoCo world, a 4 m square arena closed by 0.3 m walls, with **twenty obstacles** in it (eight
 kinds, in turn: the box, post and low wall of the training task, and a fat round column, a tall slim pillar, a long thin barrier, an L-shaped
 corner and a thin stick; all taller than the time-of-flight sensor, in a fixed random layout). Every duck runs the same policy, the one trained
 for Isaac Lab's enclosed navigation task (`Isaac-Skill-NavigateWalkEnclosed-Microduck`, run `2026-10-08_03-26-33`, `model_10250`): the Walk skill's
@@ -44,16 +44,17 @@ commanded to walk forwards at its own pace (0.2-0.4 m/s) with a heading that wan
 and the other ducks is what its **time-of-flight sensor** shows the policy.
 
 The ducks have to share one world for that: a ray from one duck's chest hits another duck's collision shapes, and they really collide. So
-`Swarm` (`src/Swarm.*`) is one `mjModel` with thirty ducks in it (`swarm.xml`, names prefixed `d0_`, `d1_`, ...), stepped on one physics thread, with one
+`Swarm` (`src/Swarm.*`) is one `mjModel` with sixteen ducks in it (`swarm.xml`, names prefixed `d0_`, `d1_`, ...), stepped on one physics thread, with one
 inference thread running the policy once per duck (about 40 us each), and the ducks' observations, the 64 rays each above all, built in parallel
 (without that the rays took 24 ms of a 20 ms period). The ducks collide with each other, the floor, the walls and the obstacles but never with their own
-parts, which takes one contact bit per duck, so thirty is the most (`tools/make_swarm.py`). ofxRobot's `MotionSafetyGate` still checks every
+parts, which takes one contact bit per duck, so thirty is the most (`tools/make_swarm.py`; the default is 16). ofxRobot's `MotionSafetyGate` still checks every
 duck's joint targets (three limbs each). A duck that falls over, or whose targets the gate refuses, is stood up again at a free spot in the
 arena. `r` scatters them again, `p` pauses, `g` shows the collision shapes. The HUD counts, since the last reset, the periods in which ducks touched each
 other, a wall or an obstacle, how many ducks have another duck in their sensor's view, and the closest two trunks have been.
 
-What to expect: they do steer, and 30 ducks in 16 m^2 with 20 obstacles is crowded, so they also bump into each other and the obstacles. In a
-30 s headless run, 61 of the 435 pairs touched at some point and the closest trunks got to 7 cm. The simulation runs at about 1.6x real time on one thread.
+What to expect: they do steer, and 16 ducks in 16 m^2 with 20 obstacles is crowded, so they also bump into each other and the obstacles. In a
+30 s headless run, 20 of the 120 pairs touched at some point and the closest trunks got to 7 cm. The simulation runs at about 3x real time on one thread
+(30 ducks: about 1.6x, and more touching).
 
 ## The data
 
@@ -71,7 +72,7 @@ the MuJoCo version vendored in ofxRobot: a model written by a newer one can use 
   *inside* the model, so renaming the pair breaks loading)
 - `assets/`: the meshes
 
-`swarm.xml` and `navigator.onnx` come from `python tools/make_swarm.py <bin/data> <policy.onnx> [ducks=30] [half_side=2.0] [obstacles=20]`
+`swarm.xml` and `navigator.onnx` come from `python tools/make_swarm.py <bin/data> <policy.onnx> [ducks=16] [half_side=2.0] [obstacles=20]`
 (it only needs `pip install onnx`, and reads the `microduck.xml` above).
 
 ## What it took to make the policy walk here
