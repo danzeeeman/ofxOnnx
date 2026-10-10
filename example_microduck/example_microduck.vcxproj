@@ -113,6 +113,8 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\ofApp.cpp" />
     <ClCompile Include="src\Microduck.cpp" />
+    <ClCompile Include="src\Swarm.cpp" />
+    <ClCompile Include="src\SwarmApp.cpp" />
     <ClCompile Include="..\src\ofxOnnx.cpp" />
     <ClCompile Include="..\..\ofxRobot\src\core\RobotKinematics.cpp" />
     <ClCompile Include="..\..\ofxRobot\src\kinematics\ArmIk.cpp" />

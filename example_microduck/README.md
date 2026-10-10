@@ -20,6 +20,9 @@ bin\example_microduck.exe --check 30 no window needed: the walker and the follow
 bin\example_microduck.exe --check 15 --solo no window needed: walk 15 simulated seconds, print how it went, exit 0 or 1
 bin\example_microduck.exe --check 10 --threads   the same, in real time on the physics and inference threads
 bin\example_microduck.exe --check 15 --run       the Run policy: run to a target 3 m ahead, stop within 0.4 m of it
+bin\example_microduck.exe --swarm       thirty ducks in one walled arena among obstacles, avoiding each other (see "The swarm")
+bin\example_microduck.exe --swarm --check 30   the swarm without a window, for 30 simulated seconds
+bin\example_microduck.exe --simplify     draw reduced meshes (about 45k triangles in all instead of ~800k per robot), for a weaker GPU
 ```
 
 Two more microducks (`--ducks N` for N in all; the default is 3) run the **Follow** policy (`Isaac-Skill-Follow-Microduck`) as a chain: the first keeps about 0.6 m behind the one you drive, the second behind the first, and so on, each facing the one ahead of it. They are separate MuJoCo worlds in one coordinate frame, so they do not collide with each other (they can walk through one another), each has its own physics and inference threads, and each "sees" the robot it follows through that simulated camera; the HUD marks a follower `(lost)` while it has not seen the robot ahead for over a second. `1` / `2` switch the robot you drive between the Walk and the Run policy (the followers keep following it).
@@ -30,6 +33,28 @@ Walk: `up/down` walk, `left/right` turn, `, .` step sideways, `space` stops. Run
 `--check` passes when it stays up, covers at least half the commanded distance, and ofxRobot's forward kinematics agrees with the
 simulation to 0.01 mm. On the data here: upright for the whole run, 0.31-0.35 m/s forward for a 0.3 m/s command, FK error 0.00004 mm.
 
+## The swarm
+
+`--swarm` puts **thirty** microducks in one MuJoCo world, a 4 m square arena closed by 0.3 m walls, with **twenty obstacles** in it (eight
+kinds, in turn: the box, post and low wall of the training task, and a fat round column, a tall slim pillar, a long thin barrier, an L-shaped
+corner and a thin stick; all taller than the time-of-flight sensor, in a fixed random layout). Every duck runs the same policy, the one trained
+for Isaac Lab's enclosed navigation task (`Isaac-Skill-NavigateWalkEnclosed-Microduck`, run `2026-10-08_03-26-33`, `model_10250`): the Walk skill's
+136 inputs, trained among obstacles and other ducks with collisions ending the episode. Nothing steers them but the policy: each duck is
+commanded to walk forwards at its own pace (0.2-0.4 m/s) with a heading that wanders every 8-16 s, and what keeps it clear of walls, obstacles
+and the other ducks is what its **time-of-flight sensor** shows the policy.
+
+The ducks have to share one world for that: a ray from one duck's chest hits another duck's collision shapes, and they really collide. So
+`Swarm` (`src/Swarm.*`) is one `mjModel` with thirty ducks in it (`swarm.xml`, names prefixed `d0_`, `d1_`, ...), stepped on one physics thread, with one
+inference thread running the policy once per duck (about 40 us each), and the ducks' observations, the 64 rays each above all, built in parallel
+(without that the rays took 24 ms of a 20 ms period). The ducks collide with each other, the floor, the walls and the obstacles but never with their own
+parts, which takes one contact bit per duck, so thirty is the most (`tools/make_swarm.py`). ofxRobot's `MotionSafetyGate` still checks every
+duck's joint targets (three limbs each). A duck that falls over, or whose targets the gate refuses, is stood up again at a free spot in the
+arena. `r` scatters them again, `p` pauses, `g` shows the collision shapes. The HUD counts, since the last reset, the periods in which ducks touched each
+other, a wall or an obstacle, how many ducks have another duck in their sensor's view, and the closest two trunks have been.
+
+What to expect: they do steer, and 30 ducks in 16 m^2 with 20 obstacles is crowded, so they also bump into each other and the obstacles. In a
+30 s headless run, 61 of the 435 pairs touched at some point and the closest trunks got to 7 cm. The simulation runs at about 1.6x real time on one thread.
+
 ## The data
 
 `bin/data/microduck/` is made by `tools/make_microduck.py` from the robot's URDF and the trained policy (it needs `pip install mujoco==3.13.0 onnx`,
@@ -39,11 +64,15 @@ the MuJoCo version vendored in ofxRobot: a model written by a newer one can use 
   robot geometry that does not collide with itself, and a floor: the physics the policy was trained with
 - `left_leg / right_leg / head .joints.json`: ofxRobot descriptors
 - `microduck.json`: joint order, default pose, action scales, gains, timing
+- `swarm.xml`, `navigator.onnx`: the shared world of the swarm and the policy that drives its ducks (made by `tools/make_swarm.py`, below)
 - `follower.onnx`: the Follow policy (run `2026-10-05_07-18-23`): the same 136 inputs, velocity zero, and the target is what a camera on the follower's head would measure of the robot ahead (training's `CameraTarget`): seen only inside a 90 x 60 degree view and 3 m, with 3 % range noise and 1 degree angle noise, 5 % dropped frames, the last estimate held for 1 s in the frame it was measured in, then zeros ("not seen"). So the follower has to keep its head on the leader, and the gaps wander between 0.3 and 1 m instead of holding 0.6
 - `runner.onnx`: the Run policy (`Isaac-Skill-Run-Microduck`): the same 136 inputs, with the velocity command zero and the target given as a point on the floor (0.1 m up) in the robot's frame
 - `walker.onnx`: the Walk policy, with its weights folded into the one file (PyTorch's exporter writes them to a `.onnx.data` file whose name is recorded
   *inside* the model, so renaming the pair breaks loading)
 - `assets/`: the meshes
+
+`swarm.xml` and `navigator.onnx` come from `python tools/make_swarm.py <bin/data> <policy.onnx> [ducks=30] [half_side=2.0] [obstacles=20]`
+(it only needs `pip install onnx`, and reads the `microduck.xml` above).
 
 ## What it took to make the policy walk here
 
