@@ -62,16 +62,30 @@ void main() {
     _shader.bindDefaults();
     _shader.linkProgram();
 
-    // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame). The CAD meshes have ~800k
-    // triangles per robot, far more than a screen can show, so for drawing the vertices are merged on a 2 mm grid (vertex
-    // clustering) and given smooth normals: a few tens of thousands of triangles, the same look at this size. The physics
-    // does not use these.
+    // The model's meshes, as MuJoCo compiled them (so each already sits in its geom's frame): the CAD meshes, ~800k triangles
+    // per robot. With --simplify the vertices are merged on a 2 mm grid (vertex clustering) and given smooth normals instead:
+    // ~45k triangles in all, for a GPU that cannot draw them all. The physics does not use these.
     const mjModel* m = _duck.model();
     size_t before = 0, after = 0;
     for (int i = 0; i < m->nmesh; ++i) {
         ofVboMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
         const int v0 = m->mesh_vertadr[i], f0 = m->mesh_faceadr[i], nv = m->mesh_vertnum[i];
+        if (!_simplify) {   // the CAD meshes as they are: a triangle soup with flat normals
+            for (int f = 0; f < m->mesh_facenum[i]; ++f) {
+                glm::vec3 p[3];
+                for (int c = 0; c < 3; ++c) {
+                    const int vi = m->mesh_face[3 * (f0 + f) + c];
+                    p[c] = glm::vec3(m->mesh_vert[3 * (v0 + vi)], m->mesh_vert[3 * (v0 + vi) + 1], m->mesh_vert[3 * (v0 + vi) + 2]);
+                }
+                glm::vec3 n = glm::cross(p[1] - p[0], p[2] - p[0]);
+                n = glm::length(n) > 0.f ? glm::normalize(n) : glm::vec3(0, 0, 1);
+                for (int c = 0; c < 3; ++c) { mesh.addVertex(p[c]); mesh.addNormal(n); }
+                ++before; ++after;
+            }
+            _meshes.push_back(mesh);
+            continue;
+        }
         const float cell = 0.002f;
         std::unordered_map<long long, int> cellOf;
         std::vector<int> clusterOf(nv);
@@ -106,7 +120,7 @@ void main() {
         }
         _meshes.push_back(mesh);
     }
-    ofLogNotice("ofApp") << "display meshes: " << before << " triangles simplified to " << after;
+    ofLogNotice("ofApp") << "display meshes: " << (_simplify ? "simplified from " + ofToString(before) + " to " : "full, ") << after << " triangles";
 
     _light.setPointLight();
     _light.setPosition(0.6f, -0.8f, 1.6f);

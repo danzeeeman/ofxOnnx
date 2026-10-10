@@ -31,8 +31,8 @@
 // --ducks N is N robots in all (3 by default), --solo one robot with no followers; --run starts with the Run policy (with --check, it has to run to a target 3 m ahead and stop there).
 class ofApp : public ofBaseApp {
 public:
-    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false, int ducks = 3)
-        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run), _chain(ducks > 1), _followerCount(ducks - 1) {}
+    ofApp(bool check = false, double checkSeconds = 10.0, bool threaded = false, bool run = false, int ducks = 3, bool simplify = false)
+        : _check(check), _checkSeconds(checkSeconds), _threaded(threaded), _startRun(run), _chain(ducks > 1), _followerCount(ducks - 1), _simplify(simplify) {}
 
     void setup() override;
     void update() override;
@@ -52,6 +52,7 @@ private:
     bool _threaded = false;
     bool _startRun = false;
     bool _chain = true;                  // more robots, each following the one ahead of it
+    bool _simplify = false;              // --simplify: reduced display meshes
     int _followerCount = 2;              // so 3 robots in all by default
 
     Microduck _duck;                                    // the one you drive

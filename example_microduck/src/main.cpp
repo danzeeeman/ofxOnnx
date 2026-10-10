@@ -1,5 +1,6 @@
 #include "ofMain.h"
 #include "ofApp.h"
+#include "SwarmApp.h"
 
 int main(int argc, char** argv) {
     // --check [seconds]: no window needed to judge it: walk forward for that many simulated seconds, print how it
@@ -7,6 +8,8 @@ int main(int argc, char** argv) {
     bool check = false;
     double seconds = 10.0;
     int ducks = 3;              // --ducks N: the robot you drive and N - 1 followers (--solo is 1)
+    bool simplify = false;      // --simplify: draw reduced meshes (a lighter load for the GPU)
+    bool swarm = false;         // --swarm: twelve ducks in one world, avoiding each other (SwarmApp)
     bool solo = false;          // --solo: one robot, no followers
     bool run = false;           // --run: the Run policy
     bool threaded = false;      // --threads: with --check, run the two threads in real time instead of stepping in a loop
@@ -18,6 +21,8 @@ int main(int argc, char** argv) {
         if (std::string(argv[i]) == "--threads") threaded = true;
         if (std::string(argv[i]) == "--run") run = true;
         if (std::string(argv[i]) == "--solo") solo = true;
+        if (std::string(argv[i]) == "--swarm") swarm = true;
+        if (std::string(argv[i]) == "--simplify") simplify = true;
         if (std::string(argv[i]) == "--ducks" && i + 1 < argc) ducks = std::max(1, std::atoi(argv[++i]));
     }
 
@@ -25,5 +30,6 @@ int main(int argc, char** argv) {
     settings.setSize(1280, 800);
     settings.setGLVersion(3, 2);
     ofCreateWindow(settings);
-    return ofRunApp(new ofApp(check, seconds, threaded, run, solo ? 1 : ducks));
+    if (swarm) return ofRunApp(new SwarmApp(check, check && seconds == 10.0 ? 30.0 : seconds, simplify));
+    return ofRunApp(new ofApp(check, seconds, threaded, run, solo ? 1 : ducks, simplify));
 }
