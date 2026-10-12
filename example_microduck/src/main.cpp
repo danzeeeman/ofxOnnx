@@ -30,6 +30,13 @@ int main(int argc, char** argv) {
     settings.setSize(1280, 800);
     settings.setGLVersion(3, 2);
     ofCreateWindow(settings);
-    if (swarm) return ofRunApp(new SwarmApp(check, check && seconds == 10.0 ? 30.0 : seconds, simplify));
+    if (swarm) {
+        auto* app = new SwarmApp(check, check && seconds == 10.0 ? 30.0 : seconds, simplify);
+        app->render = FrameRecorder::Options::parse(argc, argv);   // --render [dir] [--fps n] [--size WxH] [--seconds s]
+        bool fpsGiven = false;
+        for (int i = 1; i < argc; ++i) fpsGiven = fpsGiven || std::string(argv[i]) == "--fps";
+        if (!fpsGiven) app->render.fps = 50;                       // the swarm's own rate: one frame per policy period
+        return ofRunApp(app);
+    }
     return ofRunApp(new ofApp(check, seconds, threaded, run, solo ? 1 : ducks, simplify));
 }

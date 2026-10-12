@@ -22,6 +22,7 @@ void main() {
 })";
 const char* kFrag = R"(#version 150
 uniform vec3 lightPos;   // view space
+uniform vec3 up;         // world up, in view space
 in vec3 vNormal;
 in vec3 vPos;
 in vec3 vColor;
@@ -33,7 +34,12 @@ void main() {
     vec3 v = normalize(-vPos);
     float diff = max(dot(n, l), 0.0);
     float spec = pow(max(dot(n, normalize(l + v)), 0.0), 30.0);
-    outColor = vec4(vColor * (0.4 + 0.75 * diff) + vec3(0.3 * spec), 1.0);
+    // a dome light: the sky overhead, the ground bounce below, whatever way the surface faces; and a key light for form
+    float sky = 0.5 + 0.5 * dot(n, normalize(up));
+    vec3 dome = mix(vec3(0.55, 0.52, 0.50), vec3(1.0, 1.0, 1.06), sky);
+    // the ducks' own colours are dark (black plastic, orange trim), so the dome is strong: about twice what a pale surface would take
+    vec3 base = max(vColor, vec3(0.16));
+    outColor = vec4(base * (1.7 * dome + 0.6 * diff) + vec3(0.35 * spec), 1.0);
 })";
 }
 
@@ -57,10 +63,37 @@ void SwarmApp::setup() {
     _cam.setTarget(glm::vec3(0.f, 0.f, 0.1f));
     _cam.setPosition(glm::vec3(1.3f, -2.1f, 1.7f) * _half);
     _cam.lookAt(glm::vec3(0.f, 0.f, 0.1f), glm::vec3(0, 0, 1));
-    _swarm.startThread();
+    _dome.setup();
+    if (render.enabled()) {
+        buildFlight();
+        _flightCam.setNearClip(0.01f);
+        _flightCam.setFarClip(100.f);
+        _rec.setup(render, _flight.length());
+        _flightT = -render.warmup;
+    } else {
+        _swarm.startThread();
+    }
 }
 
-void SwarmApp::exit() { _swarm.stopThread(); }
+void SwarmApp::exit() {
+    _rec.finish();
+    _swarm.stopThread();
+}
+
+// The flight for a video, 30 seconds over the arena: high and wide, round to the side, low across the floor, in close
+// behind one duck as it walks (the camera follows it), and back out. The azimuth gains a turn over the loop.
+void SwarmApp::buildFlight() {
+    const glm::vec3 mid(0.f, 0.f, 0.12f);
+    const float H = _half;
+    _flight.shots = {
+        {mid, -60.f, 34.f, 1.7f * H, 6.f},     // the arena from a corner, in tight
+        {mid, 20.f, 28.f, 1.5f * H, 6.f},      // round to the side
+        {mid, 100.f, 11.f, 1.5f * H, 6.f},     // low across the floor
+        {mid, 190.f, 20.f, 1.1f * H, 6.f},     // (the follow shot picks it up here)
+        {mid, 270.f, 32.f, 1.8f * H, 6.f},     // and back out
+    };
+    _flight.azimuthPerLoop = 360.f;
+}
 
 // The model's meshes, as MuJoCo compiled them (each already sits in its geom's frame), as a triangle soup with flat normals; with
 // --simplify, merged on a 2 mm grid with smooth normals instead (~45k triangles in all rather than ~800k per duck).
@@ -115,13 +148,49 @@ void SwarmApp::buildMeshes() {
     }
 }
 
-void SwarmApp::update() {}
+void SwarmApp::update() {
+    if (!_rec.active()) return;
+    // Fixed steps: the swarm's policy period is 20 ms; a frame is 1/fps, so the policy steps owed per frame are carried over.
+    _simCarry += 0.02 > 0.0 ? (1.0 / _rec.options().fps) / 0.02 : 0.0;
+    while (_simCarry >= 1.0) {
+        _swarm.policyStep();
+        _simCarry -= 1.0;
+    }
+    _flightT += _rec.dt();
+}
 
 void SwarmApp::draw() {
     if (_check) return;
+    if (_rec.active()) {
+        if (_rec.beginFrame()) { drawScene(); _rec.endFrame(); }
+        return;
+    }
+    drawScene();
+}
+
+void SwarmApp::drawScene() {
     ofBackgroundGradient(ofColor(70, 78, 92), ofColor(18, 20, 26), OF_GRADIENT_LINEAR);
     ofEnableDepthTest();
-    _cam.begin();
+    ofCamera* cam = &_cam;
+    if (_rec.active()) {   // the flight, with the camera drawn in behind one duck for the middle of it
+        CameraShot s = _flight.at(_flightT);
+        const float t = (float)std::max(_flightT, 0.0), w0 = 15.f, w1 = 25.f;                      // the follow shot: seconds 15 to 25
+        float w = glm::clamp(std::min((t - w0) / 3.f, (w1 - t) / 3.f), 0.f, 1.f);
+        w = w * w * (3.f - 2.f * w);
+        if (w > 0.f) {
+            const glm::dvec3 p = _swarm.pos(3 % std::max(1, _swarm.count()));
+            const double h = _swarm.heading(3 % std::max(1, _swarm.count()));
+            s.target = glm::mix(s.target, glm::vec3((float)p.x, (float)p.y, 0.1f), w);
+            s.azimuthDeg = glm::mix(s.azimuthDeg, glm::degrees((float)h) + 180.f - 25.f, w);        // behind it, a little to the side
+            s.elevationDeg = glm::mix(s.elevationDeg, 17.f, w);
+            s.distance = glm::mix(s.distance, 1.1f, w);
+        }
+        const float az = glm::radians(s.azimuthDeg), el = glm::radians(s.elevationDeg);
+        _flightCam.setPosition(s.target + glm::vec3(std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)) * s.distance);
+        _flightCam.lookAt(s.target, glm::vec3(0.f, 0.f, 1.f));
+        cam = &_flightCam;
+    }
+    cam->begin();
 
     ofSetColor(40);
     ofDrawBox(glm::vec3(0.f, 0.f, -0.01f), 2.f * _half + 4.f, 2.f * _half + 4.f, 0.02f);
@@ -146,10 +215,17 @@ void SwarmApp::draw() {
             pose[g] = M;
         }
     }
-    // the walls and the obstacles (box and cylinder geoms): plain, in the colours the model gives them
+    // the walls and the obstacles (box and cylinder geoms): in the colours the model gives them, lit by the dome light
+    ofEnableLighting();
+    _dome.enable();
     for (int g = 0; g < m->ngeom; ++g) {
         if (m->geom_type[g] != mjGEOM_BOX && m->geom_type[g] != mjGEOM_CYLINDER) continue;
-        ofSetColor(ofFloatColor(m->geom_rgba[4 * g], m->geom_rgba[4 * g + 1], m->geom_rgba[4 * g + 2], 1.f));
+        const ofFloatColor colour(m->geom_rgba[4 * g], m->geom_rgba[4 * g + 1], m->geom_rgba[4 * g + 2], 1.f);
+        ofMaterial material;
+        material.setDiffuseColor(colour);
+        material.setAmbientColor(colour * 0.5f);
+        material.setShininess(20.f);
+        material.begin();
         ofPushMatrix();
         glm::mat4 M(1.f);
         for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) M[c][r] = (float)_swarm.data()->geom_xmat[9 * g + 3 * r + c];
@@ -162,12 +238,16 @@ void SwarmApp::draw() {
             ofDrawCylinder(0.f, 0.f, 0.f, (float)m->geom_size[3 * g], 2.f * (float)m->geom_size[3 * g + 1]);
         }
         ofPopMatrix();
+        material.end();
     }
+    _dome.disable();
+    ofDisableLighting();
 
     // the ducks: one instanced draw per mesh, the instances being the ducks' copies of it
     const glm::vec4 light = ofGetCurrentViewMatrix() * glm::vec4(1.0f, -1.5f, 3.0f, 1.f);
     _shader.begin();
     _shader.setUniform3f("lightPos", glm::vec3(light));
+    _shader.setUniform3f("up", glm::vec3(ofGetCurrentViewMatrix() * glm::vec4(0.f, 0.f, 1.f, 0.f)));
     const auto& groups = _geomsOfMesh[_showCollision ? 1 : 0];
     for (size_t mesh = 0; mesh < groups.size(); ++mesh) {
         const std::vector<int>& geoms = groups[mesh];
@@ -189,8 +269,9 @@ void SwarmApp::draw() {
         }
     }
     _shader.end();
-    _cam.end();
+    cam->end();
     ofDisableDepthTest();
+    if (_rec.active()) return;   // no text in a recording
 
     Swarm::Stats st;
     double wall = 0.0;
@@ -208,7 +289,6 @@ void SwarmApp::draw() {
          " periods   closest trunks " + ofToString(st.closest, 2) + " m\n";
     s += "r reset, p pause, g collision shapes, drag/wheel camera";
     ofDrawBitmapString(s, 12, 20);
-    if (ofGetFrameNum() == 420) { ofImage img; img.grabScreen(0, 0, ofGetWidth(), ofGetHeight()); img.save("C:/Users/danm/AppData/Local/Temp/claude/C--src-openFrameworks-addons-ofxRobot/f75c6123-6411-4c35-9e9c-6eaf6189351a/scratchpad/swarm.png"); }
 }
 
 void SwarmApp::keyPressed(int key) {
