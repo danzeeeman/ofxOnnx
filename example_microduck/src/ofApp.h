@@ -1,6 +1,8 @@
 #pragma once
 #include "ofMain.h"
 #include "Microduck.h"
+#include "CameraPath.h"       // ofxRobot/src/core
+#include "FrameRecorder.h"
 
 // A trained walking policy making a biped walk: the microduck, in MuJoCo, driven by ofxOnnx, described and checked
 // with ofxRobot. See Microduck.h for who does what.
@@ -40,11 +42,18 @@ public:
     void draw() override;
     void keyPressed(int key) override;
 
+    // --render [dir] [--fps n] [--size WxH] [--seconds s]: write a 30 second camera flight round the group as PNG frames, frame by
+    // frame, and exit (ofxRobot's FrameRecorder.h; 1920x1080, 50 fps by default: one frame per policy period, to C:/src/renders/
+    // example_microduck unless a folder is given). The walker walks a circle by itself and the followers trail it; nothing runs in
+    // real time (no threads), so the video is the same however long a frame takes to draw.
+    FrameRecorder::Options render;
+
 private:
+    void drawScene();
     void runCheck();
     void runChainCheck();
     void drawRobots();                  // every robot, one instanced draw per mesh
-    void drawKinematics();
+    void drawKinematics(Microduck& duck);   // one robot's limbs: its joints, and the foot by forward kinematics and by the simulation
     glm::mat4 toMat4(const double* pos, const double* mat) const;
 
     bool _check = false;
@@ -59,6 +68,10 @@ private:
     std::vector<std::unique_ptr<Microduck>> _followers;  // each follows the robot ahead of it: the first follows _duck
     std::vector<ofVboMesh> _meshes;      // every mesh in the model, in the model's own frame
     ofEasyCam _cam;
+    ofCamera _flightCam;                 // the camera of a recording: placed by the flight, not the mouse
+    FrameRecorder _rec;
+    CameraPath _flight;
+    double _flightT = 0.0, _simCarry = 0.0;
     ofShader _shader;                    // lit, with one transform and colour per instance (per robot)
     ofLight _light;
     ofPolyline _trail;
