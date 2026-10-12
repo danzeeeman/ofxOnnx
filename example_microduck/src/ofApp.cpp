@@ -44,6 +44,7 @@ void main() {
 })";
     const std::string frag = R"(#version 150
 uniform vec3 lightPos;   // view space
+uniform vec3 up;         // world up, in view space
 in vec3 vNormal;
 in vec3 vPos;
 in vec3 vColor;
@@ -55,7 +56,12 @@ void main() {
     vec3 v = normalize(-vPos);
     float diff = max(dot(n, l), 0.0);
     float spec = pow(max(dot(n, normalize(l + v)), 0.0), 30.0);
-    outColor = vec4(vColor * (0.4 + 0.75 * diff) + vec3(0.3 * spec), 1.0);
+    // a dome light: the sky overhead, the ground bounce below, whatever way the surface faces; and a key light for form
+    float sky = 0.5 + 0.5 * dot(n, normalize(up));
+    vec3 dome = mix(vec3(0.55, 0.52, 0.50), vec3(1.0, 1.0, 1.06), sky);
+    // the robot's own colours are dark (black plastic, orange trim), so the dome is strong
+    vec3 base = max(vColor, vec3(0.16));
+    outColor = vec4(base * (1.7 * dome + 0.6 * diff) + vec3(0.35 * spec), 1.0);
 })";
     _shader.setupShaderFromSource(GL_VERTEX_SHADER, vert);
     _shader.setupShaderFromSource(GL_FRAGMENT_SHADER, frag);
@@ -136,7 +142,22 @@ void main() {
     _cam.setTarget(_focus);
     _cam.setPosition(_focus + glm::vec3(0.35f, -0.45f, 0.22f) * (1.f + 0.9f * float(_followers.size())));   // further back for a longer chain
     _cam.lookAt(_focus, glm::vec3(0, 0, 1));
-    if (!_check) {
+    if (render.enabled() && !_check) {
+        const float H = 0.7f + 0.25f * float(_followers.size());   // the group is bigger with more followers
+        _flight.shots = {
+            {glm::vec3(0.f), -50.f, 22.f, 1.1f * H, 6.f},    // the group from a corner, in tight
+            {glm::vec3(0.f), 20.f, 18.f, 0.8f * H, 6.f},     // round to the side
+            {glm::vec3(0.f), 100.f, 10.f, 0.55f * H, 6.f},    // low, among them
+            {glm::vec3(0.f), 200.f, 20.f, 0.85f * H, 6.f},    // from behind
+            {glm::vec3(0.f), 270.f, 26.f, 1.15f * H, 6.f},    // and back out
+        };
+        _flight.azimuthPerLoop = 360.f;
+        _rec.setup(render, _flight.length());
+        _flightT = -render.warmup;
+        _flightCam.setNearClip(0.005f);
+        _flightCam.setFarClip(50.f);
+        _vx = 0.25f; _vy = 0.f; _wz = 0.3f;                  // the walker walks a circle (about 0.8 m across the radius)
+    } else if (!_check) {
         _duck.startThread();
         for (auto& f : _followers) f->startThread();
     }
@@ -197,6 +218,7 @@ void ofApp::runCheck() {
 }
 
 void ofApp::exit() {
+    _rec.finish();
     for (auto& f : _followers) f->stopThread();
     _duck.stopThread();
 }
@@ -244,6 +266,21 @@ void ofApp::runChainCheck() {
 
 void ofApp::update() {
     if (_check) return;
+    if (_rec.active()) {   // recording: the robots are stepped here, by the policy period, on this thread
+        _duck.setCommand(_vx, _vy, _wz);
+        _simCarry += (1.0 / _rec.options().fps) / 0.02;
+        while (_simCarry >= 1.0) {
+            _duck.policyStep();
+            for (auto& f : _followers) f->policyStep();
+            _simCarry -= 1.0;
+        }
+        glm::vec3 centre(_duck.trunkPos());
+        for (auto& f : _followers) centre += glm::vec3(f->publishedPos());
+        centre /= float(1 + _followers.size());
+        _focus += (centre - _focus) * 0.2f;
+        _flightT += _rec.dt();
+        return;
+    }
     std::lock_guard<std::mutex> lock(_duck.mutex);   // the simulation runs on its own thread
     const double wall = ofGetLastFrameTime();
     _duck.setCommand(_vx, _vy, _wz);
@@ -296,6 +333,7 @@ void ofApp::drawRobots() {
     const glm::vec4 light = ofGetCurrentViewMatrix() * glm::vec4(0.6f, -0.8f, 1.6f, 1.f);
     _shader.begin();
     _shader.setUniform3f("lightPos", glm::vec3(light));
+    _shader.setUniform3f("up", glm::vec3(ofGetCurrentViewMatrix() * glm::vec4(0.f, 0.f, 1.f, 0.f)));
     std::vector<glm::vec3> colors(n);
     for (int g = 0; g < m->ngeom; ++g) {
         if (m->geom_type[g] != mjGEOM_MESH) continue;
@@ -316,16 +354,16 @@ void ofApp::drawRobots() {
 
 // ofxRobot's view of the robot: each limb's joints from RobotKinematics + ArmIk forward kinematics, and where that
 // puts the foot, next to where the simulation has it.
-void ofApp::drawKinematics() {
+void ofApp::drawKinematics(Microduck& d) {
     glm::mat4 T(1.f);
-    const glm::dmat3 R = _duck.trunkRot();
+    const glm::dmat3 R = d.trunkRot();
     for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) T[c][r] = (float)R[c][r];
-    T[3] = glm::vec4(glm::vec3(_duck.trunkPos()), 1.f);
+    T[3] = glm::vec4(glm::vec3(d.trunkPos()), 1.f);
     ofDisableDepthTest();
     ofPushMatrix();
     ofMultMatrix(T);
     ofSetLineWidth(3.f);
-    for (const Microduck::Limb& l : _duck.limbs()) {
+    for (const Microduck::Limb& l : d.limbs()) {
         const std::vector<glm::dmat4> frames = l.ik.linkFrames(l.q);
         glm::vec3 prev(0.f);
         ofSetColor(80, 220, 255);
@@ -335,12 +373,12 @@ void ofApp::drawKinematics() {
             ofDrawSphere(p, 0.0035f);
             prev = p;
         }
-        const glm::vec3 tool(_duck.toolFk(l));
+        const glm::vec3 tool(d.toolFk(l));
         ofDrawLine(prev, tool);
         ofSetColor(255, 220, 60);
         ofDrawSphere(tool, 0.006f);                          // ofxRobot: the tool by forward kinematics
         ofSetColor(255, 80, 80, 200);
-        ofDrawSphere(glm::vec3(_duck.toolSim(l)), 0.0035f);  // MuJoCo: the same body, from the simulation
+        ofDrawSphere(glm::vec3(d.toolSim(l)), 0.0035f);  // MuJoCo: the same body, from the simulation
     }
     ofSetLineWidth(1.f);
     ofPopMatrix();
@@ -349,10 +387,27 @@ void ofApp::drawKinematics() {
 
 void ofApp::draw() {
     if (_check) return;
+    if (_rec.active()) {
+        if (_rec.beginFrame()) { drawScene(); _rec.endFrame(); }
+        return;
+    }
+    drawScene();
+}
+
+void ofApp::drawScene() {
     std::lock_guard<std::mutex> lock(_duck.mutex);
     ofBackgroundGradient(ofColor(70, 78, 92), ofColor(18, 20, 26), OF_GRADIENT_LINEAR);
     ofEnableDepthTest();
-    _cam.begin();
+    ofCamera* cam = &_cam;
+    if (_rec.active()) {   // the flight, round the middle of the group
+        const CameraShot s = _flight.at(_flightT);
+        const float az = glm::radians(s.azimuthDeg), el = glm::radians(s.elevationDeg);
+        const glm::vec3 target = _focus + glm::vec3(0.f, 0.f, 0.08f);
+        _flightCam.setPosition(target + glm::vec3(std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)) * s.distance);
+        _flightCam.lookAt(target, glm::vec3(0.f, 0.f, 1.f));
+        cam = &_flightCam;
+    }
+    cam->begin();
 
     // The floor: a plane with a grid on it that moves with the robot's footprint so the walking reads.
     ofSetColor(40);
@@ -388,9 +443,13 @@ void ofApp::draw() {
         ofFill();
         ofSetLineWidth(1.f);
     }
-    if (_showKinematics) drawKinematics();
-    _cam.end();
+    if (_showKinematics) {                      // ofxRobot's view of the limbs: the leader's while driving, every robot's in a recording
+        drawKinematics(_duck);
+        if (_rec.active()) for (auto& f : _followers) drawKinematics(*f);
+    }
+    cam->end();
     ofDisableDepthTest();
+    if (_rec.active()) return;   // no text in a recording
 
     const glm::dvec3 vb = _duck.velocityBody();
     const double tilt = std::acos(std::min(1.0, std::max(-1.0, _duck.uprightness()))) * 180.0 / 3.14159265358979;
