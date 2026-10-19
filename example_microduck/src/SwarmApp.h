@@ -31,6 +31,7 @@ public:
     // Nothing runs in real time: every frame the swarm takes the same steps on this thread, so the video is the same however
     // long a frame takes to draw. Join with: ffmpeg -framerate 50 -i frames/frame_%06d.png -c:v libx264 -pix_fmt yuv420p -crf 14 ducks.mp4
     FrameRecorder::Options render;
+    bool track = false;             // --track (with --lock): the camera rides behind one duck instead of looking down on the arena
 
 private:
     void runCheck();
@@ -45,6 +46,9 @@ private:
     std::vector<std::vector<int>> _geomsOfMesh[2];          // [collision?][mesh] -> the geoms that use it, one or more per duck
     ofShader _shader;
     ofEasyCam _cam;
+    glm::vec3 _trackFocus{0.f};
+    float _trackAz = 0.f;
+    bool _trackInit = false;
     ofCamera _flightCam;            // the camera of a recording: placed by the flight, not the mouse
     DomeLight _dome;                // lights the walls and obstacles; the ducks are lit by the same dome in their shader
     FrameRecorder _rec;

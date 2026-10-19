@@ -277,6 +277,7 @@ void ofApp::update() {
         glm::vec3 centre(_duck.trunkPos());
         for (auto& f : _followers) centre += glm::vec3(f->publishedPos());
         centre /= float(1 + _followers.size());
+        if (_rec.options().lockCamera >= 0.0 && _rec.options().zoom > 2.0) centre = glm::vec3(_duck.trunkPos());   // a close-up: on the lead duck
         _focus += (centre - _focus) * 0.2f;
         _flightT += _rec.dt();
         return;
