@@ -173,9 +173,10 @@ void SwarmApp::drawScene() {
     ofEnableDepthTest();
     ofCamera* cam = &_cam;
     if (_rec.active()) {   // the flight, with the camera drawn in behind one duck for the middle of it
-        CameraShot s = _flight.at(_flightT);
+        const bool locked = _rec.options().lockCamera >= 0.0;                                       // --lock: one fixed view
+        CameraShot s = _flight.at(locked ? _rec.options().lockCamera : _flightT);
         const float t = (float)std::max(_flightT, 0.0), w0 = 15.f, w1 = 25.f;                      // the follow shot: seconds 15 to 25
-        float w = glm::clamp(std::min((t - w0) / 3.f, (w1 - t) / 3.f), 0.f, 1.f);
+        float w = locked ? 0.f : glm::clamp(std::min((t - w0) / 3.f, (w1 - t) / 3.f), 0.f, 1.f);
         w = w * w * (3.f - 2.f * w);
         if (w > 0.f) {
             const glm::dvec3 p = _swarm.pos(3 % std::max(1, _swarm.count()));
