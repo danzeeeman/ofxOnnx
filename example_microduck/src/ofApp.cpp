@@ -400,7 +400,12 @@ void ofApp::drawScene() {
     ofEnableDepthTest();
     ofCamera* cam = &_cam;
     if (_rec.active()) {   // the flight, round the middle of the group
-        const CameraShot s = _flight.at(_flightT);
+        CameraShot s = _flight.at(_rec.options().lockCamera >= 0.0 ? _rec.options().lockCamera : _flightT);
+        if (_rec.options().lockCamera >= 0.0) {   // --lock: the whole group in view as it walks its circle, not in tight on one robot
+            const float H = 0.7f + 0.25f * float(_followers.size());
+            s.distance = 2.1f * H / (float)_rec.options().zoom;
+            s.elevationDeg = std::max(8.f, 30.f - (float)_rec.options().lowerDeg);
+        }
         const float az = glm::radians(s.azimuthDeg), el = glm::radians(s.elevationDeg);
         const glm::vec3 target = _focus + glm::vec3(0.f, 0.f, 0.08f);
         _flightCam.setPosition(target + glm::vec3(std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)) * s.distance);
