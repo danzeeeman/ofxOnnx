@@ -176,6 +176,7 @@ void SwarmApp::drawScene() {
         const bool locked = _rec.options().lockCamera >= 0.0;                                       // --lock: one fixed view
         CameraShot s = _flight.at(locked ? _rec.options().lockCamera : _flightT);
         const float t = (float)std::max(_flightT, 0.0), w0 = 15.f, w1 = 25.f;                      // the follow shot: seconds 15 to 25
+        if (locked) s = {glm::vec3(0.f, 0.f, 0.f), -90.f, 89.f, 1.35f * _half, 6.f};              // straight down on the arena
         float w = locked ? 0.f : glm::clamp(std::min((t - w0) / 3.f, (w1 - t) / 3.f), 0.f, 1.f);
         w = w * w * (3.f - 2.f * w);
         if (w > 0.f) {
@@ -185,6 +186,15 @@ void SwarmApp::drawScene() {
             s.azimuthDeg = glm::mix(s.azimuthDeg, glm::degrees((float)h) + 180.f - 25.f, w);        // behind it, a little to the side
             s.elevationDeg = glm::mix(s.elevationDeg, 17.f, w);
             s.distance = glm::mix(s.distance, 1.1f, w);
+        }
+        if (locked && track) {   // a tracking shot: low in front of one duck, a little to the side, looking back at it, the camera easing after it
+            const int k = 3 % std::max(1, _swarm.count());
+            const glm::dvec3 p = _swarm.pos(k);
+            const float h = glm::degrees((float)_swarm.heading(k)) + 25.f;
+            if (!_trackInit) { _trackFocus = glm::vec3((float)p.x, (float)p.y, 0.1f); _trackAz = h; _trackInit = true; }
+            _trackFocus += (glm::vec3((float)p.x, (float)p.y, 0.1f) - _trackFocus) * 0.15f;
+            _trackAz += std::atan2(std::sin(glm::radians(h - _trackAz)), std::cos(glm::radians(h - _trackAz))) * 57.29578f * 0.05f;
+            s = {_trackFocus, _trackAz, 38.f, 1.3f, 6.f};
         }
         const float az = glm::radians(s.azimuthDeg), el = glm::radians(s.elevationDeg);
         _flightCam.setPosition(s.target + glm::vec3(std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)) * s.distance);
@@ -221,6 +231,10 @@ void SwarmApp::drawScene() {
     _dome.enable();
     for (int g = 0; g < m->ngeom; ++g) {
         if (m->geom_type[g] != mjGEOM_BOX && m->geom_type[g] != mjGEOM_CYLINDER) continue;
+        if (_rec.active()) {   // in a recording the arena's walls are not drawn (they still hold the ducks in)
+            const char* name = mj_id2name(m, mjOBJ_GEOM, g);
+            if (name && std::string(name).rfind("wall", 0) == 0) continue;
+        }
         const ofFloatColor colour(m->geom_rgba[4 * g], m->geom_rgba[4 * g + 1], m->geom_rgba[4 * g + 2], 1.f);
         ofMaterial material;
         material.setDiffuseColor(colour);

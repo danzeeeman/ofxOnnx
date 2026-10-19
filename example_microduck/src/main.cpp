@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
         app->render = FrameRecorder::Options::parse(argc, argv);   // --render [dir] [--fps n] [--size WxH] [--seconds s]
         bool fpsGiven = false;
         for (int i = 1; i < argc; ++i) fpsGiven = fpsGiven || std::string(argv[i]) == "--fps";
+        for (int i = 1; i < argc; ++i) if (std::string(argv[i]) == "--track") app->track = true;
         if (!fpsGiven) app->render.fps = 50;                       // the swarm's own rate: one frame per policy period
         return ofRunApp(app);
     }
