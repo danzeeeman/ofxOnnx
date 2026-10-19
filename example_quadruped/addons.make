@@ -1,3 +1,0 @@
-ofxNetwork
-ofxRobot
-ofxOnnx

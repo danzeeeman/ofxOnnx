@@ -1,2 +1,0 @@
-ofxOnnx
-ofxRobot
