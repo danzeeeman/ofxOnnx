@@ -1,0 +1,110 @@
+{
+  "name": "ANYmal-D RF",
+  "units": {
+    "length": "m",
+    "angle": "deg"
+  },
+  "upAxis": "Z",
+  "baseLink": "base",
+  "linkNames": [
+    "base",
+    "RF_HIP",
+    "RF_THIGH",
+    "RF_SHANK"
+  ],
+  "joints": [
+    {
+      "name": "RF_HAA",
+      "link": "RF_HIP",
+      "origin": [
+        0.304,
+        -0.109,
+        0.0
+      ],
+      "rot0_wxyz": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rot1_wxyz": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "limits_deg": [
+        -35.0,
+        45.0
+      ]
+    },
+    {
+      "name": "RF_HFE",
+      "link": "RF_THIGH",
+      "origin": [
+        0.069,
+        -0.006,
+        0.0
+      ],
+      "rot0_wxyz": [
+        0.707106781,
+        0.0,
+        0.0,
+        0.707106781
+      ],
+      "rot1_wxyz": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "limits_deg": [
+        -540.0,
+        540.0
+      ]
+    },
+    {
+      "name": "RF_KFE",
+      "link": "RF_SHANK",
+      "origin": [
+        -0.1805,
+        0.0,
+        -0.2849999
+      ],
+      "rot0_wxyz": [
+        0.0,
+        -1.0,
+        0.0,
+        -0.0
+      ],
+      "rot1_wxyz": [
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "limits_deg": [
+        -540.0,
+        540.0
+      ]
+    }
+  ],
+  "tool": {
+    "link": "RF_FOOT",
+    "origin": [
+      0.02225,
+      0.1,
+      -0.39246
+    ],
+    "rpy": [
+      0.0,
+      0.0,
+      1.5707963
+    ]
+  },
+  "notes": [
+    "Written by tools/make_limbs.py from anymal_d.xml: one leg as a serial chain from the trunk (base).",
+    "Per joint: T(theta) = translate(origin) * R(rot0) * Rx(theta) * R(rot1)^-1",
+    "tool: the foot body, fixed after the last joint, in that joint's link frame."
+  ]
+}

@@ -38,6 +38,12 @@ ofxOnnx runs the policy on its own thread at 50 Hz, and ofxRobot describes the l
 the simulation and gates the joint targets. It needs ofxRobot next to this addon. Keys steer it; `--check` runs it headless
 and exits 0/1. See `example_microduck/README.md`.
 
+`example_quadruped` makes an ANYmal-D walk with Isaac Lab's pretrained velocity policy, in ofxRobot's streaming-client shape: MuJoCo is the
+robot, ofxOnnx runs two networks (the walking policy at 50 Hz, and under it the ANYdrive LSTM actuator network at every 5 ms physics step),
+and ofxRobot supplies the leg descriptors and kinematics, the `RobotState` exchange (one per leg), the safety gate, the drawing, the video
+recorder and a state publisher. `--parity` checks both networks against PyTorch, `--check` judges the stand-pose hold, the fault handling
+and a 20 s walk. It needs ofxRobot and ofxNetwork next to this addon. See `example_quadruped/README.md`.
+
 ## Linux
 ### CUDA
 CUDA tries to link by default. As outlined via the addon_config.mk file. 

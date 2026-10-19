@@ -1,0 +1,142 @@
+<mujoco model="anymal_d">
+  <!-- ANYmal-D, from the ANYbotics USD in newton-assets (BSD-3-Clause, see LICENSE). Made by tools/make_anymal_d.py. -->
+  <compiler angle="radian" meshdir="meshes/visual" autolimits="true"/>
+  <!-- the training physics: Isaac Lab / Newton + MuJoCo Warp, sim.dt 0.005, elliptic cone, impratio 100, newton solver, euler -->
+  <option timestep="0.005" gravity="0 0 -9.81" cone="elliptic" impratio="100" solver="Newton" iterations="100" ls_iterations="50" integrator="Euler"/>
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="256" height="256" rgb1="0.35 0.37 0.40" rgb2="0.30 0.32 0.35"/>
+    <material name="floor" texture="grid" texrepeat="8 8" reflectance="0.05"/>
+    <mesh name="base" file="base.stl"/>
+    <mesh name="LF_HIP" file="LF_HIP.stl"/>
+    <mesh name="LF_THIGH" file="LF_THIGH.stl"/>
+    <mesh name="LF_SHANK" file="LF_SHANK.stl"/>
+    <mesh name="LF_FOOT" file="LF_FOOT.stl"/>
+    <mesh name="LH_HIP" file="LH_HIP.stl"/>
+    <mesh name="LH_THIGH" file="LH_THIGH.stl"/>
+    <mesh name="LH_SHANK" file="LH_SHANK.stl"/>
+    <mesh name="LH_FOOT" file="LH_FOOT.stl"/>
+    <mesh name="RF_HIP" file="RF_HIP.stl"/>
+    <mesh name="RF_THIGH" file="RF_THIGH.stl"/>
+    <mesh name="RF_SHANK" file="RF_SHANK.stl"/>
+    <mesh name="RF_FOOT" file="RF_FOOT.stl"/>
+    <mesh name="RH_HIP" file="RH_HIP.stl"/>
+    <mesh name="RH_THIGH" file="RH_THIGH.stl"/>
+    <mesh name="RH_SHANK" file="RH_SHANK.stl"/>
+    <mesh name="RH_FOOT" file="RH_FOOT.stl"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="0 0 0.05" material="floor" friction="1 0.005 0.0001" condim="3"/>
+    <body name="base" pos="0 0 0.62">
+      <freejoint name="root"/>
+      <inertial pos="-0.01562621 0.0006796187 -0.0115341" mass="26.45958" fullinertia="0.2532405 1.475473 1.540467 0.005121482 0.02137633 0.0005962126"/>
+      <geom type="mesh" mesh="base" contype="0" conaffinity="0" group="1" mass="0"/>
+      <geom type="capsule" size="0.12 0.35" pos="0 0 0" quat="0.7071068 0 0.7071068 0" friction="0.8 0.005 0.0001" condim="3"/>
+      <body name="LF_HIP" pos="0.304 0.109 0" quat="1 0 0 0">
+        <joint name="LF_HAA" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.7853984 0.6108654" limited="true" damping="0" armature="0" frictionloss="0"/>
+        <inertial pos="0.035047 -0.001226767 0" mass="0.36586" fullinertia="0.0002385236 0.0005582458 0.0004433212 3.255359e-06 1.268e-08 1.810984e-08"/>
+        <geom type="mesh" mesh="LF_HIP" contype="0" conaffinity="0" group="1" mass="0"/>
+        <body name="LF_THIGH" pos="0.069 0.006 0" quat="0.7071068 2.067365e-15 2.067365e-15 -0.7071068">
+          <joint name="LF_HFE" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+          <inertial pos="-0.09051131 -8.795754e-05 -0.140188" mass="5.1322" fullinertia="0.1048802 0.1079588 0.01393288 -0.0001419918 -0.02005946 0.0004029993"/>
+          <geom type="mesh" mesh="LF_THIGH" contype="0" conaffinity="0" group="1" mass="0"/>
+          <geom type="box" size="0.0465 0.0315 0.1425" pos="-0.09513 -5.67019e-09 -0.1425" quat="0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+          <geom type="cylinder" size="0.07 0.081565" pos="-0.125065 -7.454455e-09 -0.2849999" quat="0.5 0.5 0.5 0.5" friction="0.8 0.005 0.0001" condim="3"/>
+          <body name="LF_SHANK" pos="-0.1805 -1.075864e-08 -0.2849999" quat="0 0 0 1">
+            <joint name="LF_KFE" type="hinge" pos="0 0 0" axis="1 0 0" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+            <inertial pos="0.008932083 -0.02181624 0.0004191592" mass="0.49954" fullinertia="0.001671191 0.0005504764 0.001274144 -2.127597e-05 1.712089e-06 -1.686986e-05"/>
+            <geom type="mesh" mesh="LF_SHANK" contype="0" conaffinity="0" group="1" mass="0"/>
+            <geom type="cylinder" size="0.0175 0.19786" pos="0.00535884 -0.1 -0.1642168" quat="-0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+            <body name="LF_FOOT" pos="0.02224999 -0.1 -0.39246" quat="0.7071068 0 0 -0.7071068">
+              <inertial pos="0 -0.01559 0.15004" mass="0.29644" fullinertia="0.005142632 0.005131597 0.0001189015 1.459925e-09 6.849996e-09 0.0001632309"/>
+              <geom type="mesh" mesh="LF_FOOT" contype="0" conaffinity="0" group="1" mass="0"/>
+              <geom type="sphere" size="0.031455" pos="0 -0.008141153 0.0303832" quat="1 0 0 0" friction="0.8 0.005 0.0001" condim="3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="LH_HIP" pos="-0.304 0.109 0" quat="-4.371139e-08 0 7.892648e-25 -1">
+        <joint name="LH_HAA" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-0.7853984 0.6108654" limited="true" damping="0" armature="0" frictionloss="0"/>
+        <inertial pos="0.035047 0.001226764 0" mass="0.36586" fullinertia="0.0002385235 0.0005582458 0.0004433212 -3.255331e-06 1.268e-08 -1.810984e-08"/>
+        <geom type="mesh" mesh="LH_HIP" contype="0" conaffinity="0" group="1" mass="0"/>
+        <body name="LH_THIGH" pos="0.069 -0.006000006 0" quat="-0.7071068 1.727414e-16 1.485349e-15 -0.7071067">
+          <joint name="LH_HFE" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+          <inertial pos="-0.09051131 8.795215e-05 -0.140188" mass="5.1322" fullinertia="0.1048802 0.1079588 0.01393289 0.0002812658 -0.02005946 -0.0002421955"/>
+          <geom type="mesh" mesh="LH_THIGH" contype="0" conaffinity="0" group="1" mass="0"/>
+          <geom type="box" size="0.0465 0.0315 0.1425" pos="-0.09513 -5.67019e-09 -0.1425" quat="0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+          <geom type="cylinder" size="0.07 0.081565" pos="-0.125065 -7.454455e-09 -0.2849999" quat="0.5 0.5 0.5 0.5" friction="0.8 0.005 0.0001" condim="3"/>
+          <body name="LH_SHANK" pos="-0.1805 -1.075864e-08 -0.2849999" quat="0 0 0 1">
+            <joint name="LH_KFE" type="hinge" pos="0 0 0" axis="1 0 0" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+            <inertial pos="0.008932085 0.02181624 0.0004191592" mass="0.49954" fullinertia="0.001671191 0.0005504764 0.001274144 2.127584e-05 1.712091e-06 1.686986e-05"/>
+            <geom type="mesh" mesh="LH_SHANK" contype="0" conaffinity="0" group="1" mass="0"/>
+            <geom type="cylinder" size="0.0175 0.19786" pos="0.005358852 0.1 -0.1642168" quat="-0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+            <body name="LH_FOOT" pos="0.02225001 0.1 -0.39246" quat="0.7071068 0 0 -0.7071068">
+              <inertial pos="0 -0.01559 0.15004" mass="0.29644" fullinertia="0.005142632 0.005131597 0.0001189015 -1.459925e-09 -6.849996e-09 0.0001632309"/>
+              <geom type="mesh" mesh="LH_FOOT" contype="0" conaffinity="0" group="1" mass="0"/>
+              <geom type="sphere" size="0.031455" pos="0 -0.008141153 0.0303832" quat="1 0 0 0" friction="0.8 0.005 0.0001" condim="3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RF_HIP" pos="0.304 -0.109 0" quat="1 0 0 0">
+        <joint name="RF_HAA" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.6108654 0.7853984" limited="true" damping="0" armature="0" frictionloss="0"/>
+        <inertial pos="0.035047 0.001226767 0" mass="0.36586" fullinertia="0.0002385236 0.0005582458 0.0004433212 -3.255359e-06 1.268e-08 -1.810984e-08"/>
+        <geom type="mesh" mesh="RF_HIP" contype="0" conaffinity="0" group="1" mass="0"/>
+        <body name="RF_THIGH" pos="0.069 -0.006 0" quat="0.7071068 0 0 0.7071068">
+          <joint name="RF_HFE" type="hinge" pos="0 0 0" axis="1 0 0" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+          <inertial pos="-0.09051131 8.795752e-05 -0.140188" mass="5.1322" fullinertia="0.1048803 0.1079588 0.01393289 0.0002812636 -0.02005946 -0.0002421919"/>
+          <geom type="mesh" mesh="RF_THIGH" contype="0" conaffinity="0" group="1" mass="0"/>
+          <geom type="box" size="0.0465 0.0315 0.1425" pos="-0.09513 5.67019e-09 -0.1425" quat="-0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+          <geom type="cylinder" size="0.07 0.081565" pos="-0.125065 7.454455e-09 -0.2849999" quat="-0.5 -0.5 0.5 0.5" friction="0.8 0.005 0.0001" condim="3"/>
+          <body name="RF_SHANK" pos="-0.1805 1.075864e-08 -0.2849999" quat="0 0 0 -1">
+            <joint name="RF_KFE" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+            <inertial pos="0.008932083 0.02181624 0.0004191592" mass="0.49954" fullinertia="0.001671191 0.0005504764 0.001274144 2.127597e-05 1.712089e-06 1.686986e-05"/>
+            <geom type="mesh" mesh="RF_SHANK" contype="0" conaffinity="0" group="1" mass="0"/>
+            <geom type="cylinder" size="0.0175 0.19786" pos="0.00535884 0.1 -0.1642168" quat="0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+            <body name="RF_FOOT" pos="0.02224999 0.1 -0.39246" quat="0.7071068 0 0 0.7071068">
+              <inertial pos="0 0.01559 0.15004" mass="0.29644" fullinertia="0.005142632 0.005131597 0.0001189015 -1.459925e-09 6.849996e-09 -0.0001632309"/>
+              <geom type="mesh" mesh="RF_FOOT" contype="0" conaffinity="0" group="1" mass="0"/>
+              <geom type="sphere" size="0.031455" pos="0 0.008141153 0.0303832" quat="1 0 0 0" friction="0.8 0.005 0.0001" condim="3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="RH_HIP" pos="-0.304 -0.109 0" quat="-4.371139e-08 0 7.892648e-25 -1">
+        <joint name="RH_HAA" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-0.6108654 0.7853984" limited="true" damping="0" armature="0" frictionloss="0"/>
+        <inertial pos="0.035047 -0.00122677 0" mass="0.36586" fullinertia="0.0002385236 0.0005582458 0.0004433212 3.255387e-06 1.268e-08 1.810984e-08"/>
+        <geom type="mesh" mesh="RH_HIP" contype="0" conaffinity="0" group="1" mass="0"/>
+        <body name="RH_THIGH" pos="0.069 0.005999994 0" quat="0.7071067 0 0 -0.7071068">
+          <joint name="RH_HFE" type="hinge" pos="0 0 0" axis="1 0 0" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+          <inertial pos="-0.09051131 -8.795216e-05 -0.140188" mass="5.1322" fullinertia="0.1048802 0.1079588 0.01393288 -0.0001419917 -0.02005945 0.0004030016"/>
+          <geom type="mesh" mesh="RH_THIGH" contype="0" conaffinity="0" group="1" mass="0"/>
+          <geom type="box" size="0.0465 0.0315 0.1425" pos="-0.09513 5.67019e-09 -0.1425" quat="-0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+          <geom type="cylinder" size="0.07 0.081565" pos="-0.125065 7.454455e-09 -0.2849999" quat="-0.5 -0.5 0.5 0.5" friction="0.8 0.005 0.0001" condim="3"/>
+          <body name="RH_SHANK" pos="-0.1805 1.075864e-08 -0.2849999" quat="0 0 0 -1">
+            <joint name="RH_KFE" type="hinge" pos="0 0 0" axis="-1 0 8.742278e-08" range="-9.424778 9.424778" limited="true" damping="0" armature="0" frictionloss="0"/>
+            <inertial pos="0.008932085 -0.02181624 0.0004191592" mass="0.49954" fullinertia="0.001671191 0.0005504764 0.001274144 -2.127584e-05 1.712091e-06 -1.686986e-05"/>
+            <geom type="mesh" mesh="RH_SHANK" contype="0" conaffinity="0" group="1" mass="0"/>
+            <geom type="cylinder" size="0.0175 0.19786" pos="0.005358852 -0.1 -0.1642168" quat="0.7071068 0 0 0.7071068" friction="0.8 0.005 0.0001" condim="3"/>
+            <body name="RH_FOOT" pos="0.02225001 -0.1 -0.39246" quat="0.7071068 0 0 0.7071068">
+              <inertial pos="0 0.01559 0.15004" mass="0.29644" fullinertia="0.005142632 0.005131597 0.0001189015 1.459925e-09 -6.849996e-09 -0.0001632309"/>
+              <geom type="mesh" mesh="RH_FOOT" contype="0" conaffinity="0" group="1" mass="0"/>
+              <geom type="sphere" size="0.031455" pos="-5.551115e-17 0.008141153 0.0303832" quat="1 0 0 0" friction="0.8 0.005 0.0001" condim="3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="LF_HAA" joint="LF_HAA" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="LF_HFE" joint="LF_HFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="LF_KFE" joint="LF_KFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="LH_HAA" joint="LH_HAA" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="LH_HFE" joint="LH_HFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="LH_KFE" joint="LH_KFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RF_HAA" joint="RF_HAA" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RF_HFE" joint="RF_HFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RF_KFE" joint="RF_KFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RH_HAA" joint="RH_HAA" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RH_HFE" joint="RH_HFE" ctrlrange="-80 80" forcerange="-80 80"/>
+    <motor name="RH_KFE" joint="RH_KFE" ctrlrange="-80 80" forcerange="-80 80"/>
+  </actuator>
+</mujoco>
