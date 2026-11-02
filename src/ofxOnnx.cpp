@@ -80,8 +80,18 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 	
 	Ort::SessionOptions session_options;
 	session_options.SetIntraOpNumThreads(mSettings.numIntraOpThreads);
-//	session_options.SetInterOpNumThreads(1);
-	session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
+	if (mSettings.parallel) {
+		session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
+	} else {
+		// one node at a time (each still on numIntraOpThreads): no inter-op pool, which otherwise has a thread per core
+		session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+		session_options.SetInterOpNumThreads(1);
+	}
+	if (!mSettings.allowSpinning) {
+		// the pools' threads sleep between runs instead of spinning on a core each, waiting for the next one
+		session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
+		session_options.AddConfigEntry("session.inter_op.allow_spinning", "0");
+	}
 	session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 	
 	// Enable flush-to-zero and denormal-as-zero for CPU ops

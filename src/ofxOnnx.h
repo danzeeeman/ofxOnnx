@@ -59,6 +59,11 @@ public:
 		bool bPrintModelInfo = true;
 //		#endif
 		int numIntraOpThreads = std::max(1,(int)std::thread::hardware_concurrency()/2);
+		// Run the graph's nodes in parallel (an inter-op pool besides the intra-op one) or one at a time.
+		bool parallel = true;
+		// Let the pools' threads spin between runs (fastest to answer, but each holds a core busy while it waits).
+		// Several sessions in one app, or one run now and then: false, and they sleep instead.
+		bool allowSpinning = true;
 		of::filesystem::path modelPath;
 		ofLogLevel logLevel = OF_LOG_NOTICE;
 		std::string envName = "ofxOnnx";
