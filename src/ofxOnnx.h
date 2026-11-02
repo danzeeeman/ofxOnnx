@@ -13,12 +13,18 @@
 // wrapper for onnx runtime.
 // https://onnxruntime.ai/docs/install/#inference-install-table-for-all-languages
 
-// Platforms: macOS and Linux (CPU, CUDA on Linux) and Windows x64 (CPU). The Windows libraries are in
-// libs/onnxruntime/lib/vs/x64 (onnxruntime.dll is copied next to the exe by the project generator).
+// Platforms: macOS and Linux (CPU, CUDA on Linux) and Windows x64 (CPU or CUDA). The Windows libraries are in
+// libs/onnxruntime/lib/vs/x64 (onnxruntime.dll and its providers are copied next to the exe by the project generator).
 //
 // The GPU CUDA accelerated version on Linux is much faster.
 // Download the binary here: https://github.com/microsoft/onnxruntime/releases/tag/v1.24.4
 // Must have CUDA installed.
+//
+// Windows: the libraries are onnxruntime-win-x64-gpu_cuda13-1.24.4 (the GPU build, which runs on the CPU too); its
+// CUDA provider, onnxruntime_providers_cuda.dll (211 MB), is not in git: scripts/get_cuda_provider.ps1 fetches it.
+// useCuda needs the CUDA 13 toolkit's bin\x64 on the PATH (its installer puts it there) and cuDNN 9 for CUDA 13:
+// Settings::cudaDllPath, else %CUDNN_PATH%\bin\13.x\x64 or C:\Program Files\NVIDIA\CUDNN\v9.*\bin\13.*\x64. Without
+// them a session asking for CUDA runs on the CPU (getSettings().useCuda false).
 
 // -- ONNX License -- //
 // https://github.com/microsoft/onnxruntime?tab=MIT-1-ov-file
@@ -56,6 +62,9 @@ public:
 		bool useCuda = false; // must have CUDA installed and linked.
 		bool useCoreML = true; // only for macos
 		int deviceId = 0;
+		// Windows: a folder of CUDA / cuDNN DLLs put at the front of the PATH before CUDA loads (empty: cuDNN's
+		// usual places, see above)
+		std::string cudaDllPath;
 		bool bPrintModelInfo = true;
 //		#endif
 		int numIntraOpThreads = std::max(1,(int)std::thread::hardware_concurrency()/2);
@@ -70,6 +79,8 @@ public:
 	};
 
 	bool load(ofxOnnx::Settings asettings);
+	// as loaded: useCuda false if CUDA was asked for but is not there
+	const Settings& getSettings() const { return mSettings; }
 	
 	bool hasSession() {return (mSession ? true : false); }
 	Ort::Session& getSession();

@@ -4,6 +4,61 @@
 #include <cuda_runtime.h>
 #endif
 
+#if defined(TARGET_WIN32)
+#include <mutex>
+#include <set>
+
+// The DLLs the CUDA provider loads (cuDNN's, and the CUDA toolkit's if not on the PATH already) found by the PATH:
+// put `dir` at its front, once each.
+static void addToPath(const std::string & dir) {
+	static std::mutex m;
+	static std::set<std::string> added;
+	std::lock_guard<std::mutex> lock(m);
+	if( dir.empty() || added.count(dir) || !of::filesystem::is_directory(dir) ) return;
+	added.insert(dir);
+	size_t n = 0;
+	getenv_s(&n, nullptr, 0, "PATH");
+	std::string path(n, '\0');
+	if( n > 0 ) getenv_s(&n, path.data(), n, "PATH");
+	path = path.c_str();
+	_putenv_s("PATH", (dir + ";" + path).c_str());
+	ofLogNotice("ofxOnnx") << "CUDA DLLs from " << dir;
+}
+
+// cuDNN 9 for CUDA 13: %CUDNN_PATH%, else the newest under C:\Program Files\NVIDIA\CUDNN
+static std::string findCudnn() {
+	std::vector<of::filesystem::path> roots;
+	size_t n = 0;
+	getenv_s(&n, nullptr, 0, "CUDNN_PATH");
+	if( n > 0 ) {
+		std::string p(n, '\0');
+		getenv_s(&n, p.data(), n, "CUDNN_PATH");
+		roots.emplace_back(p.c_str());
+	}
+	std::error_code ec;
+	const of::filesystem::path nvidia = "C:/Program Files/NVIDIA/CUDNN";
+	std::vector<of::filesystem::path> versions;
+	for( const auto & e : of::filesystem::directory_iterator(nvidia, ec) ) {
+		if( e.is_directory() && e.path().filename().string().rfind("v9", 0) == 0 ) versions.push_back(e.path());
+	}
+	std::sort(versions.rbegin(), versions.rend());
+	roots.insert(roots.end(), versions.begin(), versions.end());
+	for( const auto & root : roots ) {
+		std::vector<of::filesystem::path> cudas;
+		for( const auto & e : of::filesystem::directory_iterator(root / "bin", ec) ) {
+			if( e.is_directory() && e.path().filename().string().rfind("13", 0) == 0 ) cudas.push_back(e.path());
+		}
+		std::sort(cudas.rbegin(), cudas.rend());
+		for( const auto & c : cudas ) {
+			if( of::filesystem::exists(c / "x64" / "cudnn64_9.dll") ) return (c / "x64").string();
+			if( of::filesystem::exists(c / "cudnn64_9.dll") ) return c.string();
+		}
+		if( of::filesystem::exists(root / "bin" / "cudnn64_9.dll") ) return (root / "bin").string();
+	}
+	return "";
+}
+#endif
+
 static const char * DTypeName(ONNXTensorElementDataType t) {
 	switch (t) {
 	case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
@@ -111,12 +166,19 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 //											);
 	
 
-#if defined(OFX_ONNX_USE_CUDA)
+// On Windows the CUDA provider goes through the OrtApi table, so no CUDA headers or libs are needed to build: with a
+// GPU onnxruntime.dll beside the exe (and the CUDA / cuDNN DLLs on the PATH) it runs on the GPU, otherwise on the CPU.
+#if defined(OFX_ONNX_USE_CUDA) || defined(TARGET_WIN32)
 	if( mSettings.useCuda ) {
+#if defined(TARGET_WIN32)
+		addToPath(mSettings.cudaDllPath.empty() ? findCudnn() : mSettings.cudaDllPath);
+#endif
+#if defined(OFX_ONNX_USE_CUDA)
 		cudaDeviceProp p {};
 		cudaGetDeviceProperties(&p, 0);
 		std::cout << "name=" << p.name << " cc=" << p.major << p.minor << "\n";
-		std::cout << "ORT VERSION: " << Ort::GetVersionString()<< std::endl; 
+		std::cout << "ORT VERSION: " << Ort::GetVersionString()<< std::endl;
+#endif
 
 
 		// --- CUDA provider on ---
@@ -127,7 +189,12 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 		cuda.arena_extend_strategy = 0;       // avoids the incremental BFCArena growth you saw
 		//cuda.gpu_mem_limit = 512ULL * 1024 * 1024; // pre-size arena
 
-		session_options.AppendExecutionProvider_CUDA(cuda); // Uses device 0 by default
+		try {
+			session_options.AppendExecutionProvider_CUDA(cuda); // Uses device 0 by default
+		} catch (const Ort::Exception & e) {
+			mSettings.useCuda = false;
+			ofLogWarning("ofxOnnx::load") << "CUDA unavailable, on the CPU: " << e.what();
+		}
 	}
 #else
 	if(mSettings.useCuda) {

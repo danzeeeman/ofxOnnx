@@ -24,7 +24,9 @@ linux64:
     ADDON_DEFINES += OFX_ONNX_USE_CUDA
 
 vs:
-	# Windows x64, CPU. onnxruntime.dll (and the providers shim it loads) are copied next to the exe.
+	# Windows x64: onnxruntime-win-x64-gpu_cuda13-1.24.4 (CPU, or CUDA with Settings::useCuda - see ofxOnnx.h).
+	# onnxruntime.dll and the providers shim are copied next to the exe; the CUDA provider (211 MB, not in git) is
+	# fetched by scripts/get_cuda_provider.ps1 and must be copied next to the exe too for CUDA.
 	ADDON_INCLUDES = src
 	ADDON_INCLUDES += libs/onnxruntime/include
 	ADDON_INCLUDES_EXCLUDE = libs/onnxruntime/include/cuda/
