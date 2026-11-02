@@ -83,6 +83,9 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 //	session_options.SetInterOpNumThreads(1);
 	session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
 	session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+	for( const auto& fd : mSettings.freeDimensions ) {
+		session_options.AddFreeDimensionOverrideByName(fd.first.c_str(), fd.second);
+	}
 	
 	// Enable flush-to-zero and denormal-as-zero for CPU ops
 	// "0" = do NOT disable flushing = flushing IS enabled
@@ -130,7 +133,7 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 //	https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
 	if( mSettings.useCoreML ) {
 		std::unordered_map<std::string, std::string> provider_options;
-		provider_options["ModelFormat"] = "MLProgram";
+		if( !mSettings.coreMLModelFormat.empty() ) provider_options["ModelFormat"] = mSettings.coreMLModelFormat;
 		provider_options["MLComputeUnits"] = "ALL";
 		provider_options["RequireStaticInputShapes"] = "0";
 		provider_options["EnableOnSubgraphs"] = "0";

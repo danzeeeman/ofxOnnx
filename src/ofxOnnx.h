@@ -62,6 +62,12 @@ public:
 		of::filesystem::path modelPath;
 		ofLogLevel logLevel = OF_LOG_NOTICE;
 		std::string envName = "ofxOnnx";
+		// a model's open dimensions pinned before it is partitioned, by name ({"unk__685", 288} ...): an execution
+		// provider (CoreML) then sees fixed shapes, which some of its op builders need
+		std::vector< std::pair< std::string, int64_t > > freeDimensions;
+		// CoreML's model format: "MLProgram", or empty for its default (NeuralNetwork). ONNX Runtime 1.24's
+		// MLProgram builder crashes on some ConvTranspose layers (NVIDIA's BodyPoseNet)
+		std::string coreMLModelFormat = "MLProgram";
 	};
 
 	bool load(ofxOnnx::Settings asettings);
