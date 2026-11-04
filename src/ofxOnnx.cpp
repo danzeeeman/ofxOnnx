@@ -81,7 +81,11 @@ bool ofxOnnx::load(ofxOnnx::Settings asettings) {
 	Ort::SessionOptions session_options;
 	session_options.SetIntraOpNumThreads(mSettings.numIntraOpThreads);
 //	session_options.SetInterOpNumThreads(1);
-	session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
+	session_options.SetExecutionMode(mSettings.parallel ? ExecutionMode::ORT_PARALLEL : ExecutionMode::ORT_SEQUENTIAL);
+	if( !mSettings.allowSpinning ) {
+		session_options.AddConfigEntry("session.intra_op.allow_spinning", "0");
+		session_options.AddConfigEntry("session.inter_op.allow_spinning", "0");
+	}
 	session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 	for( const auto& fd : mSettings.freeDimensions ) {
 		session_options.AddFreeDimensionOverrideByName(fd.first.c_str(), fd.second);

@@ -59,6 +59,12 @@ public:
 		bool bPrintModelInfo = true;
 //		#endif
 		int numIntraOpThreads = std::max(1,(int)std::thread::hardware_concurrency()/2);
+		// ORT_PARALLEL (an inter-op pool besides the intra-op one) or ORT_SEQUENTIAL. Small models run often want false.
+		bool parallel = true;
+		// false: the thread pools sleep between runs instead of spinning (less CPU when several sessions share a machine)
+		bool allowSpinning = true;
+		// where the CUDA / cuDNN DLLs are, if not on PATH (Windows CUDA builds; ignored elsewhere)
+		std::string cudaDllPath;
 		of::filesystem::path modelPath;
 		ofLogLevel logLevel = OF_LOG_NOTICE;
 		std::string envName = "ofxOnnx";
@@ -73,6 +79,8 @@ public:
 	bool load(ofxOnnx::Settings asettings);
 	
 	bool hasSession() {return (mSession ? true : false); }
+	// the settings as loaded (useCuda / useCoreML are false if that provider could not be added)
+	const Settings& getSettings() const { return mSettings; }
 	Ort::Session& getSession();
 	Ort::MemoryInfo& getCpuMem() { return mCpuMem; }
 
