@@ -37,6 +37,14 @@ The robot examples that use ofxOnnx live in ofxRobot (`addons/ofxRobot`), which 
 `example_microduck` (a biped walking on a trained policy, a chain of followers, or a swarm) and `example_quadruped` (an ANYmal-D on
 Isaac Lab's pretrained policy and an LSTM actuator network, in ofxRobot's streaming-client shape). See their READMEs there.
 
+`example_phi4` turns a garment description into a GarmentCode design (`design.json`) with the garmentgen model, a Phi-4-multimodal
+fine-tune exported to ONNX (`onnx_export` in the garmentgen project; the folder with `phi-4-mm-text.onnx`, `phi-4-mm-embedding.onnx` and the
+tokenizer goes in `example_phi4/bin/data/onnx`, or pass `--model <dir>`). ofxOnnx has no onnxruntime-genai, so the example carries its own
+byte-level BPE tokenizer (`Tokenizer.cpp`) and a KV-cache decode loop (`Phi4Chat.cpp`) whose cache stays on the GPU through `Ort::IoBinding`.
+It needs `onnxruntime_providers_cuda.dll` (`scripts/get_cuda_provider.ps1`, copied next to the exe), the CUDA 13 toolkit on the PATH and
+cuDNN 9 for CUDA 13 (see Windows above); without cuDNN it runs on the CPU, about 50 times slower.
+`example_phi4.exe --prompt "a knee-length sleeveless dress" --out design.json` writes one design and exits; `--cudnn <dir>` says where cuDNN is.
+
 ## Linux
 ### CUDA
 CUDA tries to link by default. As outlined via the addon_config.mk file. 
