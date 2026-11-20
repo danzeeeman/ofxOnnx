@@ -38,7 +38,7 @@ ofApp::ofApp(int argc, char ** argv) {
 // Returns the valid JSON, or "" if the model never produced one; `note` says what was repaired or what failed.
 std::string ofApp::design(const std::string & prompt, const std::function<void(const std::string &)> & onToken,
 	const std::function<void()> & onRetry, std::string & note) {
-	std::string ask = prompt, json;
+	std::string ask = garmentInstruction(prompt), json;
 	for (int attempt = 0; attempt < 3; attempt++) {
 		std::string answer;
 		chat.chat(ask, [&](const std::string & t) { answer += t; onToken(t); });

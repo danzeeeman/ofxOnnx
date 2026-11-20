@@ -6,21 +6,45 @@
 
 // System prompt that makes the model answer with a GarmentCode design, in the shape of garmentgen-demo's design.json.
 // A base model only follows this loosely; a model fine-tuned on the demo's data needs just the first sentence.
+// The prompt the garmentgen model was fine-tuned on (garmentgen/model/phi4_data.py SYSTEM_DESIGN, and the first "text" template of
+// configs/instructions.yaml): no schema and no examples, the model already knows the design format.
 inline const std::string & garmentSystemPrompt() {
-	static const std::string s =
-		"You are a sewing pattern designer. Turn the garment description into a GarmentCode design. "
-		"Reply with one JSON object and nothing else, no explanation and no code fence.\n"
-		"Keys: \"v\" (always 1), \"upper\" (an upper-body garment class such as FittedShirt, or null), \"wb\" (waistband class such as StraightWB, or null), "
-		"\"bottom\" (a skirt or pants class such as GodetSkirt, or null), and \"p\", an object of parameters named \"part.name\" "
-		"(for example collar.f_collar, collar.b_collar, sleeve.sleeveless, pencil-skirt.length, pencil-skirt.flare). "
-		"Lengths are fractions of the body height, flags are true or false.\n"
-		"Example. Description: a knee-length sleeveless summer dress with a flared skirt and a V neckline. Reply:\n"
-		"{\"v\":1,\"upper\":\"FittedShirt\",\"wb\":\"StraightWB\",\"bottom\":\"GodetSkirt\",\"p\":{\"waistband.waist\":1,\"waistband.width\":0.2,"
-		"\"shirt.strapless\":false,\"collar.f_collar\":\"VNeckHalf\",\"collar.b_collar\":\"CircleNeckHalf\",\"collar.width\":0.2,\"collar.fc_depth\":0.4,"
-		"\"collar.bc_depth\":0,\"sleeve.sleeveless\":true,\"sleeve.armhole_shape\":\"ArmholeCurve\",\"sleeve.connecting_width\":0.2,"
-		"\"left.enable_asym\":false,\"godet-skirt.base\":\"PencilSkirt\",\"godet-skirt.insert_w\":11,\"godet-skirt.insert_depth\":14,"
-		"\"godet-skirt.num_inserts\":6,\"godet-skirt.cuts_distance\":5,\"pencil-skirt.length\":0.33,\"pencil-skirt.flare\":1.335,"
-		"\"pencil-skirt.low_angle\":0}}";
+	static const std::string s = "You are a sewing pattern-making assistant. Reply with one GarmentDesign JSON v1 object and nothing else.";
+	return s;
+}
+inline std::string garmentInstruction(const std::string & description) {
+	const char * ws = " \t\r\n";
+	const size_t b = description.find_first_not_of(ws), e = description.find_last_not_of(ws);
+	return "Create a sewing pattern for: " + (b == std::string::npos ? std::string() : description.substr(b, e - b + 1));
+}
+
+// For a model that was not fine-tuned on designs: a system prompt that explains the format, with ranges and examples.
+inline const std::string & baseModelSystemPrompt() {
+	static const std::string s = R"PROMPT(You are a sewing pattern designer. Turn the garment description into a GarmentCode design: one JSON object and nothing else, no explanation, no code fence.
+
+"v" is always 1.
+"upper" is the top: "FittedShirt" (close fitting), "Shirt" (loose), "Jacket", "FittedJacket", or null for no top.
+"wb" is the waistband: "StraightWB", "FittedWB", or null.
+"bottom" is a skirt or trousers: "SkirtCircle" (circle or full skirt), "AsymmSkirtCircle", "GodetSkirt", "Pants" (trousers and shorts), "Skirt2" (straight or A-line), "SkirtManyPanels", "PencilSkirt", "SkirtLevels" (tiered), or null.
+A dress is a top plus a skirt. Trousers, jeans and shorts are Pants with no top.
+"p" holds the parameters of the parts you chose, named "part.name". Lengths are fractions of the body, larger is longer or wider.
+  shirt.length 0.5-3.5 (1.2 is hip length, 2 or more is a tunic or dress), shirt.width 1-1.3, shirt.flare 0.7-1.6, shirt.strapless true/false
+  sleeve.sleeveless true/false (false gives sleeves), sleeve.length 0.1-1.15 (0.3 short, 1 long), sleeve.end_width 0.2-2
+  collar.f_collar and collar.b_collar (front and back neckline): CircleNeckHalf, CurvyNeckHalf, VNeckHalf, SquareNeckHalf, TrapezoidNeckHalf
+  collar.fc_depth 0.3-2 and collar.bc_depth 0-2 (deeper neckline), collar.width -0.5-1
+  waistband.waist 1-2, waistband.width 0.1-1
+  pencil-skirt.length 0.2-0.95, pencil-skirt.flare 0.6-1.5, pencil-skirt.front_slit, back_slit, left_slit, right_slit 0-0.9
+  skirt.length -0.2-0.95 (Skirt2), flare-skirt.length -0.2-0.95, flare-skirt.suns 0.1-1.95 (fullness of a circle skirt)
+  pants.length 0.2-0.9, pants.width 1-1.5, pants.flare 0.5-1.2, pants.rise 0.5-1
+Set every value to match the description. Different descriptions give different designs; do not repeat an example unless the description matches it.
+
+Examples.
+Description: a short sleeve fitted top with a V neck
+{"v":1,"upper":"FittedShirt","wb":null,"bottom":null,"p":{"shirt.strapless":false,"sleeve.sleeveless":false,"sleeve.length":0.3,"collar.f_collar":"VNeckHalf","collar.fc_depth":0.8}}
+Description: wide leg trousers with a high waistband
+{"v":1,"upper":null,"wb":"StraightWB","bottom":"Pants","p":{"waistband.waist":1,"waistband.width":0.6,"pants.length":0.9,"pants.width":1.4,"pants.flare":1.1,"pants.rise":1}}
+Description: a long full circle skirt
+{"v":1,"upper":null,"wb":"FittedWB","bottom":"SkirtCircle","p":{"waistband.waist":1,"waistband.width":0.3,"flare-skirt.length":0.8,"flare-skirt.suns":1.5,"flare-skirt.rise":1}})PROMPT";
 	return s;
 }
 
